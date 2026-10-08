@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -11,6 +12,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestNewer(t *testing.T) {
@@ -139,5 +141,71 @@ func TestApplyNoBuildForPlatform(t *testing.T) {
 	exe := installed(t)
 	if err := Apply(context.Background(), "0.2.0", exe); err == nil || !strings.Contains(err.Error(), "no build") {
 		t.Fatalf("Apply error = %v, want 'no build'", err)
+	}
+}
+
+// serveSlow answers checksums.txt normally and the binary with handler.
+func serveSlow(t *testing.T, binary []byte, handler http.HandlerFunc) string {
+	t.Helper()
+	sum := sha256.Sum256(binary)
+	mux := http.NewServeMux()
+	mux.HandleFunc("/releases/download/v0.2.0/checksums.txt", func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprintf(w, "%s  %s\n", hex.EncodeToString(sum[:]), AssetName("0.2.0"))
+	})
+	mux.HandleFunc("/releases/download/v0.2.0/"+AssetName("0.2.0"), handler)
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+
+	oldURL, oldStall := ReleasesURL, StallTimeout
+	ReleasesURL, StallTimeout = srv.URL+"/releases", 300*time.Millisecond
+	t.Cleanup(func() { ReleasesURL, StallTimeout = oldURL, oldStall })
+	return strings.TrimPrefix(srv.URL, "http://")
+}
+
+func TestApplyStallBeforeResponse(t *testing.T) {
+	host := serveSlow(t, []byte("new"), func(w http.ResponseWriter, r *http.Request) {
+		<-r.Context().Done() // never answers
+	})
+	exe := installed(t)
+	err := Apply(context.Background(), "0.2.0", exe)
+	if !errors.Is(err, ErrStalled) || !strings.Contains(err.Error(), "no data from "+host) {
+		t.Fatalf("Apply error = %v, want a stall naming %s", err, host)
+	}
+	if got, _ := os.ReadFile(exe); string(got) != "old binary" {
+		t.Errorf("binary changed after a stalled download: %q", got)
+	}
+}
+
+func TestApplyStallMidDownload(t *testing.T) {
+	serveSlow(t, []byte("new binary"), func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte("new "))
+		w.(http.Flusher).Flush()
+		<-r.Context().Done() // stops sending
+	})
+	exe := installed(t)
+	if err := Apply(context.Background(), "0.2.0", exe); !errors.Is(err, ErrStalled) {
+		t.Fatalf("Apply error = %v, want ErrStalled", err)
+	}
+	if got, _ := os.ReadFile(exe); string(got) != "old binary" {
+		t.Errorf("binary changed after a stalled download: %q", got)
+	}
+}
+
+// A slow but steady download is never cut off, however long it takes.
+func TestApplySlowButSteady(t *testing.T) {
+	binary := []byte("new binary, delivered slowly")
+	serveSlow(t, binary, func(w http.ResponseWriter, r *http.Request) {
+		for _, b := range binary { // ~1.4s total, far over the 300ms stall limit
+			w.Write([]byte{b})
+			w.(http.Flusher).Flush()
+			time.Sleep(50 * time.Millisecond)
+		}
+	})
+	exe := installed(t)
+	if err := Apply(context.Background(), "0.2.0", exe); err != nil {
+		t.Fatalf("slow download was cut off: %v", err)
+	}
+	if got, _ := os.ReadFile(exe); string(got) != string(binary) {
+		t.Errorf("binary = %q", got)
 	}
 }

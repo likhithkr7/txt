@@ -121,11 +121,12 @@ func runUpdate() {
 		fatalf("this is a development build; to switch to a release, use the installer:\n" +
 			"  curl -fsSL https://raw.githubusercontent.com/" + update.Repo + "/main/install.sh | sh")
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
-	defer cancel()
-
 	fmt.Println("Checking for updates...")
-	latest, err := update.Latest(ctx)
+	// The version check is one tiny request; downloads below have no time
+	// limit, only a stall watchdog (see update.StallTimeout)
+	checkCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	latest, err := update.Latest(checkCtx)
+	cancel()
 	if err != nil {
 		fatalf("checking for updates: %v", err)
 	}
@@ -143,9 +144,12 @@ func runUpdate() {
 	}
 
 	fmt.Printf("Downloading txt v%s...\n", latest)
-	if err := update.Apply(ctx, latest, exe); err != nil {
+	if err := update.Apply(context.Background(), latest, exe); err != nil {
 		if errors.Is(err, os.ErrPermission) {
 			fatalf("%v\nNo permission to replace %s; try: sudo txt -update", err, exe)
+		}
+		if errors.Is(err, update.ErrStalled) {
+			fatalf("%v.\nCheck your connection and try again.", err)
 		}
 		fatalf("updating: %v", err)
 	}

@@ -40,11 +40,8 @@ main() {
     trap 'rm -rf "$TMP"' EXIT INT TERM
 
     step "Downloading ${BOLD}${NAME}${RESET}"
-    download "${DOWNLOAD_BASE}/v${VERSION}/${NAME}" "${TMP}/${NAME}" ||
-        fail "Download failed: ${DOWNLOAD_BASE}/v${VERSION}/${NAME}
-   If v${VERSION} was just tagged, the release build may still be running."
-    download "${DOWNLOAD_BASE}/v${VERSION}/checksums.txt" "${TMP}/checksums.txt" ||
-        fail "Could not download checksums.txt for v${VERSION}."
+    download "${DOWNLOAD_BASE}/v${VERSION}/${NAME}" "${TMP}/${NAME}" || fail "$DL_ERROR"
+    download "${DOWNLOAD_BASE}/v${VERSION}/checksums.txt" "${TMP}/checksums.txt" || fail "$DL_ERROR"
     verify_checksum
 
     step "Installing to ${BOLD}${TARGET}${RESET}"
@@ -112,14 +109,30 @@ detect_platform() {
 
 have() { command -v "$1" >/dev/null 2>&1; }
 
-download() { # url, output file
+# download URL FILE: on failure, returns 1 with DL_ERROR describing what
+# happened. There's no limit on total time; a download is only abandoned if no
+# data arrives for 30 seconds, so slow connections still work.
+download() {
+    DL_ERROR=""
     if have curl; then
-        curl -fsSL --retry 2 --connect-timeout 10 -o "$2" "$1"
+        info=$(curl -sL --retry 1 --connect-timeout 10 --speed-limit 1 --speed-time 30 \
+            -w '%{http_code} %{url_effective}' -o "$2" "$1") && rc=0 || rc=$?
+        code="${info%% *}"
+        host=$(printf '%s' "${info#* }" | sed 's#^[a-z]*://\([^/:]*\).*#\1#')
+        if [ "$rc" = 28 ]; then
+            DL_ERROR="Download stalled: no data from ${host} for 30 seconds.
+   Check your connection and try again."
+        elif [ "$rc" != 0 ]; then
+            DL_ERROR="Download failed: ${1} (curl error ${rc})."
+        elif [ "$code" != 200 ]; then
+            DL_ERROR="Download failed: ${1} returned HTTP ${code}."
+        fi
     elif have wget; then
-        wget -q --tries=3 --timeout=15 -O "$2" "$1"
+        wget -q --tries=2 --read-timeout=30 -O "$2" "$1" || DL_ERROR="Download failed: ${1} (wget error $?)."
     else
         fail "curl or wget is required."
     fi
+    [ -z "$DL_ERROR" ]
 }
 
 resolve_version() {
@@ -132,11 +145,16 @@ resolve_version() {
     if have curl; then
         # github.com/<repo>/releases/latest redirects to .../tag/<tag>; this
         # avoids the GitHub API and its rate limits
-        url=$(curl -fsSLI -o /dev/null -w '%{url_effective}' "https://github.com/${REPO}/releases/latest" 2>/dev/null || true)
+        # (one small request, so a plain 30-second limit is fine here)
+        url=$(curl -fsSLI --connect-timeout 10 --max-time 30 -o /dev/null -w '%{url_effective}' "https://github.com/${REPO}/releases/latest" 2>/dev/null || true)
         case "$url" in */tag/*) tag="${url##*/tag/}" ;; esac
     fi
     if [ -z "$tag" ]; then
-        json=$(download "https://api.github.com/repos/${REPO}/releases/latest" /dev/stdout 2>/dev/null || true)
+        if have curl; then
+            json=$(curl -fsSL --connect-timeout 10 --max-time 30 "https://api.github.com/repos/${REPO}/releases/latest" 2>/dev/null || true)
+        else
+            json=$(wget -qO- --timeout=30 "https://api.github.com/repos/${REPO}/releases/latest" 2>/dev/null || true)
+        fi
         tag=$(printf '%s' "$json" | sed -n 's/.*"tag_name": *"\([^"]*\)".*/\1/p' | head -n 1)
     fi
     [ -n "$tag" ] || fail "Could not find a release of ${REPO}. Set VERSION=x.y.z to pick one."

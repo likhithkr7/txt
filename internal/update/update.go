@@ -12,11 +12,13 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"runtime"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // Repo is the GitHub repository releases come from.
@@ -171,18 +173,78 @@ func checksumFor(ctx context.Context, url, name string) (string, error) {
 	return "", fmt.Errorf("no build of this version for %s/%s", runtime.GOOS, runtime.GOARCH)
 }
 
-func get(ctx context.Context, url string) (io.ReadCloser, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
-	if err != nil {
+// StallTimeout is how long a download may go without receiving any data
+// before it's abandoned. There's no limit on total time, so a slow but
+// working connection is never cut off. (A variable so tests can shorten it.)
+var StallTimeout = 30 * time.Second
+
+// ErrStalled is returned when a download makes no progress for StallTimeout.
+var ErrStalled = errors.New("download stalled")
+
+// get starts a GET and returns its body. A watchdog cancels the request if no
+// data arrives for StallTimeout, whether waiting for the response or reading it.
+func get(ctx context.Context, rawURL string) (io.ReadCloser, error) {
+	ctx, cancel := context.WithCancelCause(ctx)
+	timer := time.AfterFunc(StallTimeout, func() { cancel(ErrStalled) })
+	fail := func(err error) (io.ReadCloser, error) {
+		timer.Stop()
+		cancel(nil)
 		return nil, err
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
+	if err != nil {
+		return fail(err)
 	}
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return nil, err
+		if errors.Is(context.Cause(ctx), ErrStalled) {
+			// url.Error names the request that stalled, after any redirects
+			host := req.URL.Host
+			var uerr *url.Error
+			if errors.As(err, &uerr) {
+				if u, perr := url.Parse(uerr.URL); perr == nil {
+					host = u.Host
+				}
+			}
+			return fail(stalled(host))
+		}
+		return fail(err)
 	}
 	if resp.StatusCode != http.StatusOK {
 		resp.Body.Close()
-		return nil, fmt.Errorf("GET %s: %s", url, resp.Status)
+		return fail(fmt.Errorf("GET %s: %s", rawURL, resp.Status))
 	}
-	return resp.Body, nil
+	timer.Reset(StallTimeout)
+	return &watchedBody{body: resp.Body, ctx: ctx, cancel: cancel, timer: timer, host: resp.Request.URL.Host}, nil
+}
+
+func stalled(host string) error {
+	return fmt.Errorf("%w: no data from %s for %d seconds", ErrStalled, host, int(StallTimeout.Seconds()))
+}
+
+// watchedBody resets the stall watchdog whenever data arrives.
+type watchedBody struct {
+	body   io.ReadCloser
+	ctx    context.Context
+	cancel context.CancelCauseFunc
+	timer  *time.Timer
+	host   string
+}
+
+func (b *watchedBody) Read(p []byte) (int, error) {
+	n, err := b.body.Read(p)
+	if n > 0 {
+		b.timer.Reset(StallTimeout)
+	}
+	if err != nil && err != io.EOF && errors.Is(context.Cause(b.ctx), ErrStalled) {
+		err = stalled(b.host)
+	}
+	return n, err
+}
+
+func (b *watchedBody) Close() error {
+	b.timer.Stop()
+	b.cancel(nil)
+	return b.body.Close()
 }
