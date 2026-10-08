@@ -23,7 +23,7 @@ source ~/.zshrc   # or whatever file the installer names
 
 The installer downloads the right build for your machine, verifies its
 checksum, puts it in `~/.local/bin`, and adds that folder to your `PATH`.
-Pin a version with `VERSION=0.1.0`, or choose a folder with `INSTALL_DIR=~/bin`
+Pin a version with `VERSION=0.3.0`, or choose a folder with `INSTALL_DIR=~/bin`
 (put either before `sh`).
 
 **Windows**: download `txt-<version>-windows-amd64.exe` from
@@ -33,6 +33,7 @@ and put it on your `PATH`.
 **From source** (Go 1.26+): `go build -o txt ./cmd/txt`
 
 **Update**: `txt -update`. txt tells you when a new version is out.
+
 **Uninstall**: `rm "$(command -v txt)"`
 
 ## Usage
@@ -91,7 +92,7 @@ go run ./cmd/txt -no-open .
 Release by pushing a tag; GitHub Actions builds every platform:
 
 ```sh
-git tag v0.1.0 && git push origin v0.1.0
+git tag v0.4.0 && git push origin v0.4.0
 ```
 
 ```
