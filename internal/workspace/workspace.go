@@ -9,7 +9,6 @@ import (
 	"io/fs"
 	"os"
 	"path"
-	"path/filepath"
 	"strings"
 	"unicode/utf8"
 )
@@ -54,6 +53,25 @@ type SaveRequest struct {
 
 type SaveResponse struct {
 	Version string `json:"version"`
+	Path    string `json:"path,omitempty"` // set by CreateFile: the final name, after NormalizeFileName
+}
+
+// Extensions txt opens and lists. Anything else is treated as part of the name.
+var textExtensions = map[string]bool{".txt": true, ".md": true}
+
+// IsTextFile reports whether name has an extension txt can open (.txt or .md).
+func IsTextFile(name string) bool {
+	return textExtensions[strings.ToLower(path.Ext(name))]
+}
+
+// NormalizeFileName adds ".txt" unless the name already ends in a supported
+// extension, so "notes" and "meeting.2026" become "notes.txt" and
+// "meeting.2026.txt", while "readme.md" stays as it is.
+func NormalizeFileName(rel string) string {
+	if IsTextFile(rel) {
+		return rel
+	}
+	return rel + ".txt"
 }
 
 func (w *Workspace) Tree() (*Node, error) {
@@ -62,14 +80,7 @@ func (w *Workspace) Tree() (*Node, error) {
 }
 
 func (w *Workspace) CreateFile(rel string) (*SaveResponse, error) {
-	// Enforce the extension rules before validation
-	ext := filepath.Ext(rel)
-	if ext == "" {
-		rel += ".txt"
-	} else if ext != ".txt" {
-		return nil, errors.New("bad extension: only .txt is allowed")
-	}
-
+	rel = NormalizeFileName(rel)
 	if err := ValidatePath(rel, true); err != nil {
 		return nil, fmt.Errorf("invalid path: %w", err)
 	}
@@ -88,7 +99,7 @@ func (w *Workspace) CreateFile(rel string) (*SaveResponse, error) {
 	}
 	version := fmt.Sprintf("%d-%d", info.ModTime().UnixNano(), info.Size())
 
-	return &SaveResponse{Version: version}, nil
+	return &SaveResponse{Version: version, Path: rel}, nil
 }
 
 func (w *Workspace) CreateDir(rel string) error {
@@ -306,13 +317,13 @@ func buildTree(fileSystem fs.FS, dirPath string) (*Node, error) {
 			}
 			// Add the folder if it contains a valid file, or if it is empty
 			// (e.g. freshly created from the UI). Folders holding only
-			// non-.txt files stay hidden.
+			// other kinds of files stay hidden.
 			if len(childNode.Children) > 0 || isEmptyDir(fileSystem, fullPath) {
 				children = append(children, childNode)
 			}
 		} else {
-			// Include only .txt files
-			if strings.HasSuffix(name, ".txt") {
+			// Include only files txt can open
+			if IsTextFile(name) {
 				children = append(children, &Node{
 					Name:  name,
 					Path:  fullPath,
@@ -377,8 +388,8 @@ func ValidatePath(rel string, isFile bool) error {
 		}
 	}
 
-	if isFile && !strings.HasSuffix(rel, ".txt") {
-		return errors.New("files must have a .txt extension")
+	if isFile && !IsTextFile(rel) {
+		return errors.New("files must end in .txt or .md")
 	}
 
 	return nil

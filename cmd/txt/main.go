@@ -59,6 +59,15 @@ func securityMiddleware(expectedPort int, expectedToken string, next http.Handle
 	expectedOrigin := fmt.Sprintf("http://127.0.0.1:%d", expectedPort)
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Only txt's own scripts may run. Markdown previews are sanitized,
+		// and this is the second line of defence: a malicious .md file must
+		// never get script access to the file API. Remote images are allowed
+		// so previews can show them.
+		w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self'; "+
+			"style-src 'self'; img-src 'self' data: https:; object-src 'none'; "+
+			"base-uri 'none'; form-action 'none'; frame-ancestors 'none'")
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+
 		// 1. Host check (DNS rebinding protection)
 		if r.Host != validHost1 && r.Host != validHost2 {
 			http.Error(w, "Invalid Host header", http.StatusForbidden)
@@ -88,7 +97,8 @@ func securityMiddleware(expectedPort int, expectedToken string, next http.Handle
 	})
 }
 
-func openBrowser(url string) {
+// openBrowser asks the OS to open url in the default browser.
+func openBrowser(url string) error {
 	var err error
 	switch runtime.GOOS {
 	case "darwin": // macOS
@@ -100,10 +110,7 @@ func openBrowser(url string) {
 	default:
 		err = fmt.Errorf("unsupported platform")
 	}
-
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "txt: couldn't open a browser (%v); open the link above instead\n", err)
-	}
+	return err
 }
 
 // fatalf prints an error in the usual "prog: message" form and exits.
@@ -117,8 +124,8 @@ func main() {
 	noOpen := flag.Bool("no-open", false, "don't open a browser; just print the link")
 	verbose := flag.Bool("v", false, "log every HTTP request")
 	flag.Usage = func() {
-		fmt.Fprintln(os.Stderr, "Usage: txt [flags] [dir | file.txt]")
-		fmt.Fprintln(os.Stderr, "\nEdit the .txt files in a folder (default: the current one) in your browser.")
+		fmt.Fprintln(os.Stderr, "Usage: txt [flags] [dir | file.txt | file.md]")
+		fmt.Fprintln(os.Stderr, "\nEdit the .txt and .md files in a folder (default: the current one) in your browser.")
 		fmt.Fprintln(os.Stderr, "\nFlags:")
 		flag.PrintDefaults()
 	}
@@ -157,8 +164,8 @@ func main() {
 	if info.IsDir() {
 		workspaceRoot = absPath
 	} else {
-		if filepath.Ext(absPath) != ".txt" {
-			fatalf("%s: only .txt files can be opened", absPath)
+		if !workspace.IsTextFile(absPath) {
+			fatalf("%s: only .txt and .md files can be opened", absPath)
 		}
 		workspaceRoot = filepath.Dir(absPath)
 		// Store the file relative to the workspace root
@@ -268,7 +275,7 @@ func main() {
 		if err != nil {
 			if os.IsExist(err) {
 				http.Error(w, "File already exists", http.StatusConflict)
-			} else if strings.Contains(err.Error(), "invalid path") || strings.Contains(err.Error(), "bad extension") {
+			} else if strings.Contains(err.Error(), "invalid path") {
 				http.Error(w, err.Error(), http.StatusBadRequest)
 			} else {
 				http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -375,8 +382,9 @@ func main() {
 		handler = loggingMiddleware(handler)
 	}
 
-	// The one-time login link. Always printed: it's the only way in with
-	// -no-open, and the fallback if the browser fails to open.
+	// The login link carries this run's secret token. When the browser opens
+	// it for us there's no need to show the token; it's printed only when
+	// you have to open the link yourself (-no-open, or no browser).
 	query := url.Values{"token": {expectedToken}}
 	if initialFile != "" {
 		query.Set("open", initialFile)
@@ -384,12 +392,20 @@ func main() {
 	loginURL := finalURL + "/?" + query.Encode()
 
 	fmt.Printf("txt is serving %s\n\n", workspaceRoot)
-	fmt.Printf("  %s\n\n", loginURL)
-	fmt.Println("Press Ctrl+C to stop.")
-
+	opened := false
 	if !*noOpen {
-		openBrowser(loginURL)
+		if err := openBrowser(loginURL); err != nil {
+			fmt.Fprintf(os.Stderr, "txt: couldn't open a browser (%v)\n\n", err)
+		} else {
+			opened = true
+		}
 	}
+	if opened {
+		fmt.Printf("  Opened %s in your browser.\n\n", finalURL)
+	} else {
+		fmt.Printf("  Open this link to start (it includes a one-time login token):\n  %s\n\n", loginURL)
+	}
+	fmt.Println("Press Ctrl+C to stop.")
 
 	srv := &http.Server{Handler: handler}
 

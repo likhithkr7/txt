@@ -209,11 +209,19 @@ body {
 .tab.dirty .tab-close:hover::before { content: "×"; font-size: 15px; color: inherit; }
 .tab-close:hover { background: var(--accent-soft); color: var(--accent-ink); }
 
-/* Editors: one textarea per tab, only the active one shown */
+/* Editors: one pane per tab, only the active one shown.
+   A pane holds the textarea and, for Markdown, the rendered preview. */
 #editors { display: grid; min-height: 0; min-width: 0; }
+.pane { grid-area: 1 / 1; display: grid; min-height: 0; min-width: 0; }
+.pane[hidden] { display: none; }
+.pane[data-layout="split"] { grid-template-columns: 1fr 1fr; }
+.pane[data-layout="text"] .preview,
+.pane[data-layout="preview"] .editor { display: none; }
+.pane[data-layout="split"] .preview { border-left: 1px solid var(--rule-soft); }
+
 .editor {
-    grid-area: 1 / 1;
     width: 100%; height: 100%;
+    min-width: 0;
     background: var(--bg-sheet); color: var(--ink);
     border: none;
     /* Centre a readable column while keeping the scrollbar at the window edge */
@@ -227,6 +235,74 @@ body {
     tab-size: 4;
 }
 .editor::placeholder { color: var(--ink-faint); font-style: italic; }
+
+/* Edit / Preview switch (Markdown tabs only) */
+#mode-switch {
+    display: flex; align-self: center;
+    margin: 0 10px 0 auto;
+    border: 1px solid var(--rule-soft); border-radius: 4px;
+    overflow: hidden;
+    flex: none;
+}
+#mode-switch[hidden] { display: none; }
+#mode-switch button {
+    background: none; border: none;
+    padding: 3px 10px;
+    font-family: var(--font-display); font-size: 12px; font-weight: 600;
+    color: var(--ink-faint);
+    cursor: pointer;
+}
+#mode-switch button + button { border-left: 1px solid var(--rule-soft); }
+#mode-switch button:hover { color: var(--accent-ink); }
+#mode-switch button[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent-ink); }
+#mode-switch button:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+
+/* Rendered Markdown, set like a newspaper column */
+.preview {
+    min-width: 0;
+    overflow: auto;
+    background: var(--bg-sheet); color: var(--ink);
+    padding: 36px max(40px, calc((100% - 720px) / 2));
+    font-family: var(--font-body); font-size: 17px; line-height: 1.65;
+    overflow-wrap: break-word;
+}
+.preview > :first-child { margin-top: 0; }
+.preview h1, .preview h2, .preview h3, .preview h4, .preview h5, .preview h6 {
+    font-family: var(--font-display); font-weight: 700; line-height: 1.25;
+    margin: 1.6em 0 0.5em;
+}
+.preview h1 { font-size: 2em; padding-bottom: 0.25em; border-bottom: 3px double var(--rule); }
+.preview h2 { font-size: 1.5em; padding-bottom: 0.2em; border-bottom: 1px solid var(--rule-soft); }
+.preview h3 { font-size: 1.25em; }
+.preview h4, .preview h5, .preview h6 { font-size: 1em; }
+.preview p, .preview ul, .preview ol, .preview blockquote, .preview pre, .preview table { margin: 0 0 1em; }
+.preview ul, .preview ol { padding-left: 1.6em; }
+.preview li + li { margin-top: 0.25em; }
+.preview a { color: var(--accent-ink); text-decoration-thickness: 1px; text-underline-offset: 2px; }
+.preview blockquote {
+    border-left: 3px solid var(--accent);
+    padding: 0.1em 0 0.1em 1em;
+    color: var(--ink-soft); font-style: italic;
+}
+.preview code {
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: 0.86em;
+    background: var(--bg-sheet-alt);
+    border: 1px solid var(--rule-hair); border-radius: 3px;
+    padding: 0.1em 0.3em;
+}
+.preview pre {
+    background: var(--bg-sheet-alt);
+    border: 1px solid var(--rule-hair); border-radius: 4px;
+    padding: 12px 14px;
+    overflow: auto; line-height: 1.5;
+}
+.preview pre code { background: none; border: none; padding: 0; font-size: 0.84em; }
+.preview hr { border: none; border-top: 1px solid var(--rule-soft); margin: 2em 0; }
+.preview img { max-width: 100%; }
+.preview table { border-collapse: collapse; display: block; overflow-x: auto; }
+.preview th, .preview td { border: 1px solid var(--rule-soft); padding: 6px 12px; text-align: left; }
+.preview th { font-family: var(--font-display); background: var(--bg-sheet-alt); }
+.preview input[type="checkbox"] { margin-right: 0.4em; accent-color: var(--accent); }
 
 /* Status Bar */
 #statusbar {

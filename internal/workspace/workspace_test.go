@@ -157,3 +157,55 @@ func TestSymlinkEscape(t *testing.T) {
 		}
 	}
 }
+
+func TestNormalizeFileName(t *testing.T) {
+	cases := map[string]string{
+		"notes":           "notes.txt",
+		"notes.txt":       "notes.txt",
+		"readme.md":       "readme.md",
+		"README.MD":       "README.MD",
+		"meeting.2026":    "meeting.2026.txt", // unknown extension: part of the name
+		"draft.md.bak":    "draft.md.bak.txt",
+		"journal/today":   "journal/today.txt",
+		"v1.2/release.md": "v1.2/release.md",
+	}
+	for in, want := range cases {
+		if got := NormalizeFileName(in); got != want {
+			t.Errorf("NormalizeFileName(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+func TestMarkdownFiles(t *testing.T) {
+	dir := t.TempDir()
+	os.WriteFile(filepath.Join(dir, "readme.md"), []byte("# Hi\n"), 0644)
+	os.WriteFile(filepath.Join(dir, "notes.txt"), []byte("n\n"), 0644)
+	os.WriteFile(filepath.Join(dir, "data.json"), []byte("{}\n"), 0644)
+	ws, err := Open(dir)
+	if err != nil {
+		t.Fatalf("Failed to open workspace: %v", err)
+	}
+
+	tree, _ := ws.Tree()
+	var names []string
+	for _, c := range tree.Children {
+		names = append(names, c.Name)
+	}
+	if len(names) != 2 || names[0] != "notes.txt" || names[1] != "readme.md" {
+		t.Errorf("tree = %v, want [notes.txt readme.md]", names)
+	}
+
+	if data, err := ws.ReadFile("readme.md"); err != nil || data.Content != "# Hi\n" {
+		t.Errorf("ReadFile(readme.md) = %+v, %v", data, err)
+	}
+	if _, err := ws.ReadFile("data.json"); err == nil {
+		t.Error("expected .json to be refused")
+	}
+
+	for in, want := range map[string]string{"plan.md": "plan.md", "plain": "plain.txt", "q3.2026": "q3.2026.txt"} {
+		resp, err := ws.CreateFile(in)
+		if err != nil || resp.Path != want {
+			t.Errorf("CreateFile(%q) = %+v, %v; want path %q", in, resp, err, want)
+		}
+	}
+}

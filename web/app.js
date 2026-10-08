@@ -1,3 +1,7 @@
+// Markdown rendering for the preview (vendored, see web/vendor/)
+import { marked } from './vendor/marked.esm.js';
+import DOMPurify from './vendor/purify.es.mjs';
+
 // The Single Source of Truth
 const state = {
     // Open tabs, in tab-bar order. Each tab:
@@ -213,6 +217,14 @@ function hasUnsavedWork(tab) {
     return tab.path === null ? tab.editor.value !== '' : isDirty(tab);
 }
 
+// Same rule as the server's NormalizeFileName: keep .txt/.md, else add .txt
+// ("notes" -> "notes.txt", "meeting.2026" -> "meeting.2026.txt")
+function normalizeFileName(path) {
+    return /\.(txt|md)$/i.test(path) ? path : path + '.txt';
+}
+
+const isMarkdown = (tab) => /\.md$/i.test(tab.name);
+
 // "untitled.txt", then "untitled-2.txt", ... avoiding names already in use
 function nextUntitledName() {
     const used = new Set(state.tabs.filter(t => t.path === null).map(t => t.name));
@@ -230,7 +242,15 @@ function createTab({ path = null, name, content = '', text = content, version = 
     editor.spellcheck = false;
     editor.placeholder = 'Start writing…';
     editor.value = text;
-    editor.hidden = true;
+
+    // A pane holds the editor and, for Markdown, its rendered preview.
+    // Only the active tab's pane is shown.
+    const preview = document.createElement('div');
+    preview.className = 'preview';
+    const pane = document.createElement('div');
+    pane.className = 'pane';
+    pane.hidden = true;
+    pane.append(editor, preview);
 
     const el = document.createElement('div');
     el.className = 'tab';
@@ -246,7 +266,9 @@ function createTab({ path = null, name, content = '', text = content, version = 
 
     // `view` holds scroll position while the tab is hidden (a hidden
     // textarea reports scrollTop 0) and a restored position until first shown
-    const tab = { id: state.nextTabId++, path, name, editor, el, savedContent: content, version, lineEnding, view: null };
+    // `mode` is how a Markdown tab is shown: 'edit' (text + live preview side
+    // by side) or 'preview' (rendered only); null for other files
+    const tab = { id: state.nextTabId++, path, name, editor, preview, pane, el, savedContent: content, version, lineEnding, view: null, mode: null };
 
     el.draggable = true;
     el.addEventListener('dragstart', (e) => {
@@ -272,16 +294,22 @@ function createTab({ path = null, name, content = '', text = content, version = 
         closeTab(tab);
     });
     editor.addEventListener('input', () => {
+        schedulePreview(tab);
         renderTab(tab);
         updateStatusBar();
         scheduleSessionSave();
     });
-    editor.addEventListener('scroll', scheduleSessionSave, { passive: true });
+    editor.addEventListener('scroll', () => {
+        syncPreviewScroll(tab);
+        scheduleSessionSave();
+    }, { passive: true });
+    preview.addEventListener('click', (e) => onPreviewClick(tab, e));
 
     state.tabs.push(tab);
     DOM.tabs.appendChild(el);
-    DOM.editors.appendChild(editor);
+    DOM.editors.appendChild(pane);
     renderTab(tab);
+    setMode(tab, null);
     return tab;
 }
 
@@ -300,10 +328,10 @@ function activateTab(tab) {
     state.activeTab = tab;
     if (prev && prev !== tab) {
         prev.view = { scrollTop: prev.editor.scrollTop, scrollLeft: prev.editor.scrollLeft };
-        prev.editor.hidden = true;
+        prev.pane.hidden = true;
         renderTab(prev);
     }
-    tab.editor.hidden = false;
+    tab.pane.hidden = false;
     if (tab.view) {
         tab.editor.scrollTop = tab.view.scrollTop;
         tab.editor.scrollLeft = tab.view.scrollLeft;
@@ -313,6 +341,7 @@ function activateTab(tab) {
     tab.el.scrollIntoView({ block: 'nearest', inline: 'nearest' });
     tab.editor.focus({ preventScroll: true });
     if (tab.path) select(tab.path, false);
+    updateModeSwitch();
     updateStatusBar();
     scheduleSessionSave();
 }
@@ -342,7 +371,7 @@ async function closeTab(tab) {
     if (i === -1) return; // already closed
     state.tabs.splice(i, 1);
     tab.el.remove();
-    tab.editor.remove();
+    tab.pane.remove();
 
     if (state.activeTab === tab) {
         state.activeTab = null;
@@ -419,6 +448,88 @@ function updateStatusBar() {
     DOM.statCounts.textContent = `${lines} lines | ${content.length} chars`;
 }
 
+// ---------------------------------------------------------------------------
+// Markdown preview
+// .md tabs can show the text, a rendered preview, or both side by side.
+// ---------------------------------------------------------------------------
+
+const modeSwitch = document.getElementById('mode-switch');
+const MODES = ['edit', 'preview'];
+
+// Markdown may contain raw HTML. DOMPurify strips scripts, event handlers and
+// javascript: URLs; the server's Content-Security-Policy is a second guard.
+// Inline styles are dropped too (the CSP would block them anyway).
+const PURIFY_CONFIG = { FORBID_TAGS: ['style'], FORBID_ATTR: ['style'] };
+
+// Pick how a tab is shown. Markdown tabs keep their mode, starting in
+// 'preview'; other tabs have no mode (null) and show just the editor. Pass
+// null to just re-apply.
+// The pane's layout follows: 'text' (editor only, non-Markdown), 'split'
+// (Markdown edit: text and preview side by side) or 'preview'.
+function setMode(tab, mode) {
+    tab.mode = isMarkdown(tab) ? (mode || tab.mode || 'preview') : null;
+    tab.pane.dataset.layout = !tab.mode ? 'text' : tab.mode === 'edit' ? 'split' : 'preview';
+    if (!tab.mode) tab.preview.replaceChildren();
+    else renderPreview(tab);
+    if (tab === state.activeTab && tab.mode === 'edit') tab.editor.focus({ preventScroll: true });
+    if (tab === state.activeTab) updateModeSwitch();
+}
+
+function updateModeSwitch() {
+    const tab = state.activeTab;
+    modeSwitch.hidden = !(tab && isMarkdown(tab));
+    modeSwitch.querySelectorAll('button').forEach(btn => {
+        btn.setAttribute('aria-pressed', String(!!tab && btn.dataset.mode === tab.mode));
+    });
+}
+
+function renderPreview(tab) {
+    tab.previewQueued = false;
+    tab.preview.innerHTML = DOMPurify.sanitize(marked.parse(tab.editor.value), PURIFY_CONFIG);
+    syncPreviewScroll(tab);
+}
+
+// Re-render at most once per frame while typing
+function schedulePreview(tab) {
+    if (!tab.mode || tab.previewQueued) return;
+    tab.previewQueued = true;
+    requestAnimationFrame(() => renderPreview(tab));
+}
+
+// While editing, keep the preview at the same relative position as the text
+function syncPreviewScroll(tab) {
+    if (tab.mode !== 'edit') return;
+    const e = tab.editor, p = tab.preview;
+    const max = e.scrollHeight - e.clientHeight;
+    p.scrollTop = (max > 0 ? e.scrollTop / max : 0) * (p.scrollHeight - p.clientHeight);
+}
+
+// Links in the preview never navigate the editor away: web links open in a
+// new browser tab, and relative links to .txt/.md files open in a txt tab.
+function onPreviewClick(tab, e) {
+    const a = e.target.closest('a[href]');
+    if (!a) return;
+    e.preventDefault();
+    const href = a.getAttribute('href');
+    if (/^(https?:|mailto:)/i.test(href)) {
+        window.open(href, '_blank', 'noopener,noreferrer');
+        return;
+    }
+    if (href.startsWith('#') || /^[a-z][a-z0-9+.-]*:/i.test(href)) return;
+
+    // Resolve relative to the tab's folder; "../" can't climb above the root
+    const dir = tab.path && tab.path.includes('/') ? tab.path.slice(0, tab.path.lastIndexOf('/') + 1) : '';
+    const target = decodeURIComponent(new URL(href, 'http://workspace/' + dir).pathname.slice(1));
+    if (/\.(txt|md)$/i.test(target)) openFile(target);
+}
+
+modeSwitch.addEventListener('click', (e) => {
+    const btn = e.target.closest('button[data-mode]');
+    if (!btn || !state.activeTab) return;
+    setMode(state.activeTab, btn.dataset.mode);
+    scheduleSessionSave();
+});
+
 // Drag to reorder: the dragged tab moves live as it passes the middle of
 // another tab. Moving only when crossing the midpoint in the direction of
 // travel stops tabs of different widths from flickering back and forth.
@@ -489,6 +600,12 @@ document.addEventListener('keydown', (e) => {
         } else if (e.code === 'KeyW') {
             e.preventDefault();
             if (state.activeTab) closeTab(state.activeTab);
+        } else if (e.code === 'KeyP' && state.activeTab && isMarkdown(state.activeTab)) {
+            // Toggle Edit <-> Preview
+            e.preventDefault();
+            const tab = state.activeTab;
+            setMode(tab, MODES[(MODES.indexOf(tab.mode) + 1) % MODES.length]);
+            scheduleSessionSave();
         }
     }
 });
@@ -518,6 +635,7 @@ function sessionSnapshot() {
                 path: tab.path,
                 name: tab.name,
                 lineEnding: tab.lineEnding,
+                mode: tab.mode,
                 selection: [tab.editor.selectionStart, tab.editor.selectionEnd],
                 scroll: [view.scrollTop, view.scrollLeft]
             };
@@ -631,6 +749,9 @@ async function restoreSession() {
             tab.editor.setSelectionRange(Math.min(s.selection[0], len), Math.min(s.selection[1], len));
         }
         if (Array.isArray(s.scroll)) tab.view = { scrollTop: s.scroll[0], scrollLeft: s.scroll[1] };
+        // Sessions saved before Edit/Preview were simplified used 'split'
+        const mode = s.mode === 'split' ? 'edit' : s.mode;
+        if (MODES.includes(mode)) setMode(tab, mode);
         if (i === session.active || !toActivate) toActivate = tab;
     });
 
@@ -700,7 +821,7 @@ async function saveUntitled(tab) {
     const stem = tab.name.replace(/\.txt$/, '');
     let path = await showDialog({
         title: "Save as",
-        message: "Path relative to the workspace. .txt is added if you leave it off.",
+        message: "Path relative to the workspace. Ends in .md for Markdown; anything else becomes .txt.",
         input: true,
         value: prefix + tab.name,
         // Pre-select the name (not the folder or extension) so typing replaces it
@@ -711,7 +832,7 @@ async function saveUntitled(tab) {
     tab.editor.focus();
     if (!path) return;
 
-    if (!/\.[^/]*$/.test(path)) path += '.txt';
+    path = normalizeFileName(path);
     if (state.tabs.some(t => t.path === path)) {
         showAlert("File already open", `${path} is already open in another tab.`);
         return;
@@ -721,6 +842,8 @@ async function saveUntitled(tab) {
         tab.path = path;
         tab.name = path.split('/').pop();
         renderTab(tab);
+        // Saving as .md: stay in Edit (you were just typing), now with preview
+        setMode(tab, isMarkdown(tab) ? 'edit' : null);
         updateStatusBar();
         scheduleSessionSave();
         select(path, false);
@@ -736,7 +859,7 @@ async function saveUntitled(tab) {
 document.getElementById('btn-new-file').addEventListener('click', async () => {
     const path = await showDialog({
         title: "New file",
-        message: "Path relative to the workspace. .txt is added if you leave it off.",
+        message: "Path relative to the workspace. Ends in .md for Markdown; anything else becomes .txt.",
         input: true,
         value: selectedDirPrefix(),
         placeholder: "notes/idea.txt",
@@ -759,12 +882,10 @@ document.getElementById('btn-new-file').addEventListener('click', async () => {
             return;
         }
 
-        // Reload the sidebar to show the new file
+        // The server may have added .txt; open the file under its final name
+        const created = await res.json();
         await loadTree();
-        // Automatically open the newly created file!
-        // (Ensure it ends in .txt since the backend appends it if missing)
-        const finalPath = path.endsWith('.txt') ? path : path + '.txt';
-        openFile(finalPath);
+        openFile(created.path);
 
     } catch (err) {
         console.error(err);

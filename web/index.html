@@ -6,18 +6,7 @@
     <title>txt</title>
     <link rel="icon" type="image/svg+xml" href="/favicon.svg">
     <link rel="stylesheet" href="/style.css">
-    <script>
-        // Resolve the theme before first paint to avoid a light/dark flash.
-        // A saved choice wins; otherwise follow the system setting.
-        (function () {
-            var t;
-            try { t = localStorage.getItem('txt-theme'); } catch (e) {}
-            if (t !== 'light' && t !== 'dark') {
-                t = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
-            }
-            document.documentElement.dataset.theme = t;
-        })();
-    </script>
+    <script src="/theme.js"></script>
 </head>
 <body>
 <div id="sidebar">
@@ -55,8 +44,13 @@
         <button id="btn-new-tab" class="icon-btn" type="button" title="New tab (Alt+N)" aria-label="New tab">
             <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
         </button>
+        <!-- Shown only for .md tabs -->
+        <div id="mode-switch" role="group" aria-label="Markdown view (Alt+P)" title="Markdown view (Alt+P)" hidden>
+            <button type="button" data-mode="preview">Preview</button>
+            <button type="button" data-mode="edit">Edit</button>
+        </div>
     </div>
-    <!-- One <textarea class="editor"> per tab, created by app.js -->
+    <!-- One .pane (editor + Markdown preview) per tab, created by app.js -->
     <div id="editors"></div>
     <div id="statusbar">
         <span id="stat-path">No file open</span>
