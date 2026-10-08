@@ -150,6 +150,7 @@ body {
 .tree-node:hover { color: var(--accent-ink); }
 .tree-dir { font-family: var(--font-display); font-weight: 600; color: var(--ink-soft); margin-top: 4px; }
 .tree-file { padding-left: 15px; }
+.tree-children { padding-left: 10px; }
 .tree-node.selected { background: var(--accent-soft); color: var(--accent-ink); }
 .tree-error { color: var(--danger); font-size: 13px; line-height: 1.5; padding: 4px 6px; }
 .tree-empty { color: var(--ink-faint); font-style: italic; font-size: 13px; line-height: 1.5; padding: 4px 6px; }

@@ -63,7 +63,8 @@ Browsers reserve `Cmd/Ctrl+N` and `W`, hence `Alt`.
 
 ## Good to know
 
-- Only `.txt` and `.md` files are shown; hidden files never are. Files up to 4 MB.
+- The sidebar shows folders and `.txt`/`.md` files, loading each folder when you
+  open it, so even huge folders are instant. Hidden files never show. Files up to 4 MB.
 - A name without `.md` gets `.txt`: `notes` → `notes.txt`.
 - Lines don't wrap; long lines scroll sideways.
 - Open tabs and unsaved text live in `.txt-session.json` in the opened folder

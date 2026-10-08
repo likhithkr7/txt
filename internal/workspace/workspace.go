@@ -33,10 +33,9 @@ type Workspace struct {
 }
 
 type Node struct {
-	Name     string  `json:"name"`
-	Path     string  `json:"path"`
-	IsDir    bool    `json:"isDir"`
-	Children []*Node `json:"children,omitempty"`
+	Name  string `json:"name"`
+	Path  string `json:"path"`
+	IsDir bool   `json:"isDir"`
 }
 
 type FileData struct {
@@ -74,9 +73,38 @@ func NormalizeFileName(rel string) string {
 	return rel + ".txt"
 }
 
-func (w *Workspace) Tree() (*Node, error) {
-	// w.root.FS() gives us an io/fs.FS restricted to the sandbox
-	return buildTree(w.root.FS(), ".")
+// ListDir lists one folder level for the sidebar: its subfolders first, then
+// its .txt and .md files. Hidden entries are skipped. Listing one level at a
+// time keeps the sidebar instant even for a huge folder; the browser asks
+// for a folder's contents when it's opened. rel is "." for the root.
+func (w *Workspace) ListDir(rel string) ([]*Node, error) {
+	if rel != "." {
+		if err := ValidatePath(rel, false); err != nil {
+			return nil, fmt.Errorf("invalid path: %w", err)
+		}
+	}
+	entries, err := fs.ReadDir(w.root.FS(), rel)
+	if err != nil {
+		return nil, err
+	}
+
+	dirs, files := []*Node{}, []*Node{}
+	for _, entry := range entries {
+		name := entry.Name()
+		if strings.HasPrefix(name, ".") {
+			continue // hidden files and folders are never shown
+		}
+		full := name
+		if rel != "." {
+			full = rel + "/" + name
+		}
+		if entry.IsDir() {
+			dirs = append(dirs, &Node{Name: name, Path: full, IsDir: true})
+		} else if IsTextFile(name) {
+			files = append(files, &Node{Name: name, Path: full})
+		}
+	}
+	return append(dirs, files...), nil
 }
 
 func (w *Workspace) CreateFile(rel string) (*SaveResponse, error) {
@@ -285,76 +313,6 @@ func (w *Workspace) WriteSession(data []byte) error {
 		return ErrTooLarge
 	}
 	return w.writeAtomic(SessionFile, data, 0600)
-}
-
-func buildTree(fileSystem fs.FS, dirPath string) (*Node, error) {
-	entries, err := fs.ReadDir(fileSystem, dirPath)
-	if err != nil {
-		return nil, err
-	}
-
-	var children []*Node
-
-	for _, entry := range entries {
-		name := entry.Name()
-
-		// Skip hidden files and folders
-		if strings.HasPrefix(name, ".") {
-			continue
-		}
-
-		// Clean paths to use forward slashes (e.g., "folder/file.txt")
-		fullPath := path.Join(dirPath, name)
-		if dirPath == "." {
-			fullPath = name
-		}
-
-		if entry.IsDir() {
-			// Recurse into the directory
-			childNode, err := buildTree(fileSystem, fullPath)
-			if err != nil {
-				// A folder we can't read (permissions, macOS privacy
-				// protection) is left out rather than failing the whole tree
-				continue
-			}
-			// Add the folder if it contains a valid file, or if it is empty
-			// (e.g. freshly created from the UI). Folders holding only
-			// other kinds of files stay hidden.
-			if len(childNode.Children) > 0 || isEmptyDir(fileSystem, fullPath) {
-				children = append(children, childNode)
-			}
-		} else {
-			// Include only files txt can open
-			if IsTextFile(name) {
-				children = append(children, &Node{
-					Name:  name,
-					Path:  fullPath,
-					IsDir: false,
-				})
-			}
-		}
-	}
-
-	return &Node{
-		Name:     path.Base(dirPath),
-		Path:     dirPath,
-		IsDir:    true,
-		Children: children,
-	}, nil
-}
-
-// isEmptyDir reports whether a directory has no visible (non-hidden) entries.
-func isEmptyDir(fileSystem fs.FS, dirPath string) bool {
-	entries, err := fs.ReadDir(fileSystem, dirPath)
-	if err != nil {
-		return false
-	}
-	for _, entry := range entries {
-		if !strings.HasPrefix(entry.Name(), ".") {
-			return false
-		}
-	}
-	return true
 }
 
 // Open creates a secure boundary around the given directory.

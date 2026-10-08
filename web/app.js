@@ -12,7 +12,9 @@ const state = {
     nextTabId: 1,
     // Last clicked folder, or the folder of the open file. Prefills "+ File".
     selectedPath: ".",
-    selectedIsDir: true
+    selectedIsDir: true,
+    // Sidebar folders that are open; remembered in the session
+    expanded: new Set()
 };
 
 function selectedDir() {
@@ -104,67 +106,121 @@ function showTreeMessage(text, className) {
     DOM.tree.replaceChildren(el);
 }
 
-async function loadTree() {
-    try {
-        const res = await fetch('/api/tree');
-        if (res.status === 401) {
-            showTreeMessage(SESSION_ENDED, 'tree-error');
-            return;
-        }
-        if (!res.ok) throw new Error((await res.text()).trim() || `HTTP ${res.status}`);
-        const rootNode = await res.json();
+// The sidebar loads one folder level at a time (the server lists a folder
+// only when it's opened), so even a huge folder appears instantly.
 
-        DOM.tree.innerHTML = '';
-        const children = rootNode.children || [];
-        if (children.length === 0) {
-            showTreeMessage("No .txt or .md files here yet. Create one with +, or start typing and press Cmd+S.", 'tree-empty');
-            return;
-        }
-        // Render the root's children directly; the "." row adds nothing
-        children.forEach(child => renderNode(child, DOM.tree));
-        highlightSelection();
+const nodeSelector = (path) => `.tree-node[data-path="${CSS.escape(path)}"]`;
+
+function noteEl(text, className = 'tree-empty') {
+    const el = document.createElement('div');
+    el.className = className;
+    el.textContent = text;
+    return el;
+}
+
+// Fetch one folder level. Resolves to the list, or throws with a message.
+async function fetchDir(path) {
+    const res = await fetch(`/api/tree?path=${encodeURIComponent(path)}`);
+    if (res.status === 401) throw new Error(SESSION_ENDED);
+    if (!res.ok) throw new Error((await res.text()).trim() || `HTTP ${res.status}`);
+    return res.json();
+}
+
+// Rebuild the sidebar from the root, re-opening remembered folders
+async function loadTree() {
+    let list;
+    try {
+        list = await fetchDir('.');
     } catch (err) {
-        console.error(err);
-        showTreeMessage(`Couldn't load files: ${err.message}`, 'tree-error');
+        showTreeMessage(err.message === SESSION_ENDED ? err.message : `Couldn't load files: ${err.message}`, 'tree-error');
+        return;
     }
+    if (list.length === 0) {
+        showTreeMessage("No .txt or .md files here yet. Create one with +, or start typing and press Cmd+S.", 'tree-empty');
+        return;
+    }
+    DOM.tree.replaceChildren();
+    list.forEach(node => renderNode(node, DOM.tree));
+
+    // Parents before children, so each folder's row exists when we reach it
+    const open = [...state.expanded].sort((a, b) => a.split('/').length - b.split('/').length);
+    for (const path of open) {
+        const el = DOM.tree.querySelector(nodeSelector(path));
+        if (el) await expandDir(el);
+        else state.expanded.delete(path); // gone (renamed or deleted)
+    }
+    highlightSelection();
 }
 
 function renderNode(node, container) {
     const el = document.createElement('div');
-    const arrow = node.isDir ? '▾ ' : '';
-    el.textContent = arrow + node.name;
     el.className = 'tree-node ' + (node.isDir ? 'tree-dir' : 'tree-file');
     el.dataset.path = node.path;
+    el.dataset.name = node.name;
+    el.textContent = (node.isDir ? '▸ ' : '') + node.name;
+    container.appendChild(el);
 
-    let childrenContainer = null;
-
-    if (node.children) {
-        childrenContainer = document.createElement('div');
-        childrenContainer.style.paddingLeft = '10px';
-        node.children.forEach(child => renderNode(child, childrenContainer));
+    if (node.isDir) {
+        // Filled in when the folder is first opened
+        const box = document.createElement('div');
+        box.className = 'tree-children';
+        box.hidden = true;
+        container.appendChild(box);
     }
 
     el.addEventListener('click', (e) => {
         e.stopPropagation(); // Prevent clicking a child from bubbling to parent folders
-
-        if (node.isDir) select(node.path, true);
-
-        if (node.isDir && childrenContainer) {
-            // Toggle directory expansion
-            const isHidden = childrenContainer.style.display === 'none';
-            childrenContainer.style.display = isHidden ? 'block' : 'none';
-            el.textContent = (isHidden ? '▾ ' : '▸ ') + node.name;
-        } else if (!node.isDir) {
-            // Open the file in a tab (or switch to it if already open)
-            openFile(node.path);
+        if (!node.isDir) {
+            openFile(node.path); // or switch to it if already open
+            return;
         }
+        select(node.path, true);
+        const box = el.nextElementSibling;
+        if (box.hidden) expandDir(el);
+        else collapseDir(el);
+        scheduleSessionSave();
     });
-
-    container.appendChild(el);
-    if (childrenContainer) {
-        container.appendChild(childrenContainer);
-    }
 }
+
+async function expandDir(el) {
+    const box = el.nextElementSibling;
+    const path = el.dataset.path;
+    box.hidden = false;
+    el.textContent = '▾ ' + el.dataset.name;
+    state.expanded.add(path);
+    if (box.dataset.loaded) return;
+
+    box.dataset.loaded = '1';
+    box.replaceChildren(noteEl('Loading…'));
+    try {
+        const list = await fetchDir(path);
+        box.replaceChildren();
+        if (list.length === 0) box.appendChild(noteEl('No .txt or .md files'));
+        list.forEach(node => renderNode(node, box));
+    } catch (err) {
+        box.replaceChildren(noteEl(err.message === SESSION_ENDED ? err.message : "Can't open this folder", 'tree-error'));
+        delete box.dataset.loaded; // try again next time it's opened
+    }
+    highlightSelection();
+}
+
+function collapseDir(el) {
+    el.nextElementSibling.hidden = true;
+    el.textContent = '▸ ' + el.dataset.name;
+    state.expanded.delete(el.dataset.path);
+}
+
+// Open the folders above `path` so it's visible in the sidebar
+async function revealInTree(path) {
+    const parts = path.split('/');
+    for (let i = 1; i < parts.length; i++) {
+        const el = DOM.tree.querySelector(nodeSelector(parts.slice(0, i).join('/')));
+        if (!el) return;
+        if (el.nextElementSibling.hidden || !el.nextElementSibling.dataset.loaded) await expandDir(el);
+    }
+    highlightSelection();
+}
+
 // Theme toggle. The <head> script already applied the saved/system theme;
 // a click saves an explicit choice, and with no saved choice we keep
 // following the system setting live.
@@ -361,7 +417,10 @@ function activateTab(tab) {
     renderTab(tab);
     tab.el.scrollIntoView({ block: 'nearest', inline: 'nearest' });
     tab.editor.focus({ preventScroll: true });
-    if (tab.path) select(tab.path, false);
+    if (tab.path) {
+        select(tab.path, false);
+        revealInTree(tab.path);
+    }
     updateModeSwitch();
     updateStatusBar();
     scheduleSessionSave();
@@ -652,6 +711,7 @@ function sessionSnapshot() {
     return {
         version: 1,
         active: state.tabs.indexOf(state.activeTab),
+        expanded: [...state.expanded],
         tabs: state.tabs.map(tab => {
             const view = tab === state.activeTab || !tab.view
                 ? { scrollTop: tab.editor.scrollTop, scrollLeft: tab.editor.scrollLeft }
@@ -727,6 +787,10 @@ async function restoreSession() {
         console.error("Loading session failed:", err);
     }
     const entries = session && Array.isArray(session.tabs) ? session.tabs : [];
+
+    // Sidebar first (with remembered open folders), so tabs can reveal their files
+    if (session && Array.isArray(session.expanded)) state.expanded = new Set(session.expanded);
+    await loadTree();
 
     // Read all files in parallel, then create tabs in their original order
     const specs = await Promise.all(entries.map(async (s) => {
@@ -954,6 +1018,7 @@ document.getElementById('btn-new-dir').addEventListener('click', async () => {
         state.selectedPath = path;
         state.selectedIsDir = true;
         await loadTree();
+        await revealInTree(path);
 
     } catch (err) {
         console.error(err);
@@ -996,7 +1061,6 @@ setTimeout(async () => {
 
 // Initial load: restore the last session (or start with an empty untitled
 // tab). If txt was started with a file (`txt notes.txt`), open it too.
-loadTree();
 const initialFile = new URLSearchParams(location.search).get('open');
 if (initialFile) history.replaceState(null, '', '/'); // a reload shouldn't reopen it
 restoreSession().then(() => {

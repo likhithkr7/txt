@@ -282,15 +282,28 @@ func main() {
 		staticHandler.ServeHTTP(w, r)
 	})
 
+	// One folder level for the sidebar (?path=dir, default the root)
 	mux.HandleFunc("GET /api/tree", func(w http.ResponseWriter, r *http.Request) {
-		tree, err := ws.Tree()
+		dir := r.URL.Query().Get("path")
+		if dir == "" {
+			dir = "."
+		}
+		list, err := ws.ListDir(dir)
 		if err != nil {
-			http.Error(w, "Failed to read workspace", http.StatusInternalServerError)
+			switch {
+			case errors.Is(err, os.ErrNotExist):
+				http.Error(w, "Folder not found", http.StatusNotFound)
+			case errors.Is(err, os.ErrPermission):
+				http.Error(w, "No permission to read this folder", http.StatusForbidden)
+			case strings.Contains(err.Error(), "invalid path"):
+				http.Error(w, err.Error(), http.StatusBadRequest)
+			default:
+				http.Error(w, "Failed to read folder", http.StatusInternalServerError)
+			}
 			return
 		}
-
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(tree)
+		json.NewEncoder(w).Encode(list)
 	})
 
 	mux.HandleFunc("GET /api/file", func(w http.ResponseWriter, r *http.Request) {
@@ -489,7 +502,13 @@ func main() {
 		}()
 	}
 
-	srv := &http.Server{Handler: handler}
+	// Requests inherit this context, so stopping txt also cancels slow
+	// work in progress (like listing a very large folder)
+	serverCtx, stopRequests := context.WithCancel(context.Background())
+	srv := &http.Server{
+		Handler:     handler,
+		BaseContext: func(net.Listener) context.Context { return serverCtx },
+	}
 
 	// Serve in the background; ErrServerClosed is the normal result of Shutdown
 	go func() {
@@ -498,14 +517,16 @@ func main() {
 		}
 	}()
 
-	// Wait for Ctrl+C (or a termination signal), then let in-flight saves finish
+	// Wait for Ctrl+C (or a termination signal), then stop: give in-flight
+	// saves a moment to finish, but don't hang on anything slower
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
 	<-stop
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	stopRequests()
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 	if err := srv.Shutdown(ctx); err != nil {
-		fatalf("shutdown: %v", err)
+		srv.Close() // still busy after the grace period: force-close
 	}
 }

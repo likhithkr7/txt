@@ -2,6 +2,7 @@ package workspace
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -37,37 +38,6 @@ func TestSandboxEscapes(t *testing.T) {
 	})
 
 	// Note: os.Root prevents following symlinks out of the root automatically.
-}
-
-func TestTreeShowsEmptyDirs(t *testing.T) {
-	dir := t.TempDir()
-	os.Mkdir(filepath.Join(dir, "empty"), 0755)
-	os.MkdirAll(filepath.Join(dir, "nested/inner"), 0755)
-	os.Mkdir(filepath.Join(dir, "binaries"), 0755)
-	os.WriteFile(filepath.Join(dir, "binaries/app.bin"), []byte{0}, 0644)
-
-	ws, err := Open(dir)
-	if err != nil {
-		t.Fatalf("Failed to open workspace: %v", err)
-	}
-	tree, err := ws.Tree()
-	if err != nil {
-		t.Fatalf("Tree failed: %v", err)
-	}
-
-	got := map[string]bool{}
-	for _, c := range tree.Children {
-		got[c.Name] = true
-	}
-	if !got["empty"] {
-		t.Error("expected empty dir to be listed")
-	}
-	if !got["nested"] {
-		t.Error("expected dir containing an empty dir to be listed")
-	}
-	if got["binaries"] {
-		t.Error("expected dir with only non-.txt files to be hidden")
-	}
 }
 
 // "Save as" from an untitled tab saves to a new path with an empty base version.
@@ -127,9 +97,9 @@ func TestSessionRoundTrip(t *testing.T) {
 	}
 
 	// Hidden from the sidebar, and no temp files left behind
-	tree, _ := ws.Tree()
-	if len(tree.Children) != 1 || tree.Children[0].Name != "a.txt" {
-		t.Errorf("tree should only list a.txt, got %+v", tree.Children)
+	list, _ := ws.ListDir(".")
+	if len(list) != 1 || list[0].Name != "a.txt" {
+		t.Errorf("sidebar should only list a.txt, got %+v", list)
 	}
 	entries, _ := os.ReadDir(dir)
 	if len(entries) != 2 {
@@ -186,9 +156,9 @@ func TestMarkdownFiles(t *testing.T) {
 		t.Fatalf("Failed to open workspace: %v", err)
 	}
 
-	tree, _ := ws.Tree()
+	list, _ := ws.ListDir(".")
 	var names []string
-	for _, c := range tree.Children {
+	for _, c := range list {
 		names = append(names, c.Name)
 	}
 	if len(names) != 2 || names[0] != "notes.txt" || names[1] != "readme.md" {
@@ -210,16 +180,62 @@ func TestMarkdownFiles(t *testing.T) {
 	}
 }
 
-// One unreadable folder must not hide the rest of the workspace.
-func TestTreeSkipsUnreadableDirs(t *testing.T) {
+func paths(nodes []*Node) []string {
+	out := []string{}
+	for _, n := range nodes {
+		out = append(out, n.Path)
+	}
+	return out
+}
+
+func TestListDir(t *testing.T) {
+	dir := t.TempDir()
+	for _, d := range []string{"b-notes/sub", "a-empty", "code", ".git"} {
+		os.MkdirAll(filepath.Join(dir, d), 0755)
+	}
+	for _, f := range []string{"z.txt", "a.md", "photo.png", ".hidden.txt", "b-notes/one.txt", "code/main.go"} {
+		os.WriteFile(filepath.Join(dir, f), []byte("x\n"), 0644)
+	}
+	ws, err := Open(dir)
+	if err != nil {
+		t.Fatalf("Failed to open workspace: %v", err)
+	}
+
+	// Folders first (all of them, even without text files), then text files
+	root, err := ws.ListDir(".")
+	want := []string{"a-empty", "b-notes", "code", "a.md", "z.txt"}
+	if err != nil || fmt.Sprint(paths(root)) != fmt.Sprint(want) {
+		t.Errorf("ListDir(.) = %v, %v; want %v", paths(root), err, want)
+	}
+	if !root[0].IsDir || root[3].IsDir {
+		t.Errorf("IsDir flags wrong: %+v", root)
+	}
+
+	sub, err := ws.ListDir("b-notes")
+	want = []string{"b-notes/sub", "b-notes/one.txt"}
+	if err != nil || fmt.Sprint(paths(sub)) != fmt.Sprint(want) {
+		t.Errorf("ListDir(b-notes) = %v, %v; want %v", paths(sub), err, want)
+	}
+
+	if empty, err := ws.ListDir("a-empty"); err != nil || len(empty) != 0 {
+		t.Errorf("ListDir(a-empty) = %v, %v; want empty", empty, err)
+	}
+
+	for _, bad := range []string{"..", "../x", ".git", "b-notes/../.."} {
+		if _, err := ws.ListDir(bad); err == nil {
+			t.Errorf("ListDir(%q) should be refused", bad)
+		}
+	}
+}
+
+// An unreadable folder fails on its own; the rest of the workspace still lists.
+func TestListDirUnreadable(t *testing.T) {
 	if os.Geteuid() == 0 {
 		t.Skip("root can read everything")
 	}
 	dir := t.TempDir()
-	os.WriteFile(filepath.Join(dir, "ok.txt"), []byte("ok\n"), 0644)
 	locked := filepath.Join(dir, "locked")
 	os.Mkdir(locked, 0755)
-	os.WriteFile(filepath.Join(locked, "secret.txt"), []byte("s\n"), 0644)
 	os.Chmod(locked, 0)
 	t.Cleanup(func() { os.Chmod(locked, 0755) })
 
@@ -227,11 +243,10 @@ func TestTreeSkipsUnreadableDirs(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to open workspace: %v", err)
 	}
-	tree, err := ws.Tree()
-	if err != nil {
-		t.Fatalf("Tree failed because of one unreadable folder: %v", err)
+	if _, err := ws.ListDir("locked"); !errors.Is(err, os.ErrPermission) {
+		t.Errorf("ListDir(locked) = %v, want permission error", err)
 	}
-	if len(tree.Children) != 1 || tree.Children[0].Name != "ok.txt" {
-		t.Errorf("tree = %+v, want just ok.txt", tree.Children)
+	if root, err := ws.ListDir("."); err != nil || len(root) != 1 {
+		t.Errorf("ListDir(.) = %v, %v; want the locked folder listed", root, err)
 	}
 }
