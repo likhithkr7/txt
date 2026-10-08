@@ -1,57 +1,72 @@
-/* Fonts (bundled, latin subset; both SIL Open Font License) */
-@font-face { font-family: "Lora"; font-style: normal; font-weight: 400 700; font-display: swap; src: url(/fonts/lora.woff2) format("woff2"); }
-@font-face { font-family: "PT Serif"; font-style: normal; font-weight: 400; font-display: swap; src: url(/fonts/pt-serif-400.woff2) format("woff2"); }
-@font-face { font-family: "PT Serif"; font-style: normal; font-weight: 700; font-display: swap; src: url(/fonts/pt-serif-700.woff2) format("woff2"); }
+/* Fonts (bundled, latin subset; SIL Open Font License, see fonts/OFL-*.txt) */
+@font-face { font-family: "Cormorant Garamond"; font-style: normal; font-weight: 500 700; font-display: swap; src: url(/fonts/cormorant-garamond.woff2) format("woff2"); }
+@font-face { font-family: "Cormorant Garamond"; font-style: italic; font-weight: 500 700; font-display: swap; src: url(/fonts/cormorant-garamond-italic.woff2) format("woff2"); }
+@font-face { font-family: "Literata"; font-style: normal; font-weight: 400 700; font-display: swap; src: url(/fonts/literata.woff2) format("woff2"); }
 
-/* Theme tokens: newsprint palette. <html data-theme> is set before paint
-   (saved choice, else system setting) and flipped by the toggle in app.js. */
+/* Theme tokens. <html data-theme> is set before paint (saved choice, else
+   system setting) and flipped by the toggle in app.js.
+   Light: cool pale paper with graphite ink and slate-blue accents.
+   Dark: a near-black slate chalkboard with chalk-white text and chalk-blue accents. */
 :root {
     color-scheme: light;
-    --font-display: "Lora", Georgia, "Times New Roman", serif;
-    --font-body: "PT Serif", Georgia, "Times New Roman", serif;
+    --font-display: "Cormorant Garamond", Garamond, Georgia, serif; /* large titles only */
+    --font-body: "Literata", Georgia, "Times New Roman", serif;
+    --font-ui: var(--font-body); /* small labels: the display face is too fine */
 
-    --bg-page: #e7e1d1;
-    --bg-sheet: #f8f4e8;
-    --bg-sheet-alt: #efe8d4;
+    --bg-page: #e8eaee;
+    --bg-sheet: #f6f7f9;
+    --bg-sheet-alt: #eef0f3;
     --bg-well: #fff;
-    --ink: #1b1a17;
-    --ink-soft: #45423a;
-    --ink-faint: #7c7563;
-    --ink-invert: #f8f4e8;
-    --rule: #201e19;
-    --rule-soft: #201e1947;
-    --rule-hair: #201e1929;
-    --accent: #8a1f11;
-    --accent-hover: #a3291a;
-    --accent-soft: #8a1f1114;
-    --accent-ink: #8a1f11;
-    --danger: #8a1f11;
-    --danger-hover: #a3291a;
-    --bg-selection: #8a1f1129;
-    --shadow-sheet: 0 1px 2px #1b1a170f, 0 18px 40px -22px #1b1a1759;
+    --ink: #23272e;
+    --ink-soft: #4a515c;
+    --ink-faint: #7a828e;
+    --ink-invert: #f6f7f9;
+    --rule: #23272e;
+    --rule-soft: #23272e33;
+    --rule-hair: #23272e1c;
+    --accent: #3a5a80;
+    --accent-hover: #476b94;
+    --accent-soft: #3a5a8014;
+    --accent-ink: #34537a;
+    --danger: #b5483d;
+    --danger-hover: #c45a4f;
+    --bg-selection: #3a5a8029;
+    --shadow-sheet: 0 1px 2px #23272e14, 0 22px 50px -24px #23272e59;
+    --backdrop: #23272e66;
+    --chalk-glow: none;
+    /* Fine paper grain */
+    --texture: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .14 0 0 0 0 .15 0 0 0 0 .18 .07 0 0 0 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
 }
 
 :root[data-theme="dark"] {
     color-scheme: dark;
-    --bg-page: #17150f;
-    --bg-sheet: #221f19;
-    --bg-sheet-alt: #2a2520;
-    --bg-well: #1c1913;
-    --ink: #d9d0bd;
-    --ink-soft: #b0a790;
-    --ink-faint: #7f7663;
-    --ink-invert: #221f19;
-    --rule: #b0a790;
-    --rule-soft: #d9d0bd38;
-    --rule-hair: #d9d0bd1f;
-    --accent: #cc9a56;
-    --accent-hover: #dcae6d;
-    --accent-soft: #cc9a561f;
-    --accent-ink: #dcae6d;
-    --danger: #c65a44;
-    --danger-hover: #d66d57;
-    --bg-selection: #cc9a5640;
-    --shadow-sheet: 0 1px 2px #0000004d, 0 18px 40px -22px #0000008c;
+    --bg-page: #131518;
+    --bg-sheet: #1a1d21;
+    --bg-sheet-alt: #15171a;
+    --bg-well: #121417;
+    --ink: #e8eaee;
+    --ink-soft: #b9bec7;
+    --ink-faint: #7f8692;
+    --ink-invert: #15171a;
+    --rule: #e8eaeeb3;
+    --rule-soft: #e8eaee2e;
+    --rule-hair: #e8eaee17;
+    --accent: #9cc4ea;
+    --accent-hover: #b6d4f0;
+    --accent-soft: #9cc4ea1f;
+    --accent-ink: #a9cdee;
+    --danger: #ee8f8f;
+    --danger-hover: #f3a7a7;
+    --bg-selection: #9cc4ea33;
+    --shadow-sheet: 0 1px 2px #00000080, 0 22px 50px -24px #000000cc;
+    --backdrop: #08090bb3;
+    /* Chalk lettering: a faint dusty halo around light strokes */
+    --chalk-glow: 0 0 1px #e8eaee52;
+    /* Chalk dust: fine cool-white specks plus two soft eraser smudges */
+    --texture:
+        url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .95 0 0 0 0 .97 0 0 0 0 1 .08 0 0 0 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E"),
+        radial-gradient(ellipse 60% 40% at 22% 28%, #ffffff09, transparent 70%),
+        radial-gradient(ellipse 50% 35% at 78% 72%, #ffffff07, transparent 70%);
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -77,13 +92,15 @@ body {
 }
 #masthead {
     font-family: var(--font-display);
-    font-size: 26px; font-weight: 700;
-    letter-spacing: 0.02em;
+    font-size: 34px; font-weight: 600; font-style: italic;
+    letter-spacing: 0.01em; line-height: 1.1;
     text-align: center;
-    padding: 14px 14px 10px;
+    padding: 14px 14px 12px;
     margin: 0 14px;
-    border-bottom: 3px double var(--rule);
     position: relative;
+    text-shadow: var(--chalk-glow);
+    /* A chalk stroke: fades in and out at the ends instead of a hard rule */
+    background: linear-gradient(90deg, transparent, var(--rule) 12%, var(--rule) 88%, transparent) bottom / 100% 1.5px no-repeat;
 }
 #btn-theme { position: absolute; right: -4px; top: 50%; transform: translateY(-50%); }
 :root[data-theme="dark"] .icon-moon,
@@ -112,7 +129,7 @@ body {
     padding: 12px 10px 4px 16px;
 }
 #tree-header > span {
-    font-family: var(--font-display);
+    font-family: var(--font-ui);
     font-size: 11px; font-weight: 600;
     letter-spacing: 0.14em; text-transform: uppercase;
     color: var(--ink-faint);
@@ -148,7 +165,7 @@ body {
     overflow: hidden; text-overflow: ellipsis;
 }
 .tree-node:hover { color: var(--accent-ink); }
-.tree-dir { font-family: var(--font-display); font-weight: 600; color: var(--ink-soft); margin-top: 4px; }
+.tree-dir { font-family: var(--font-ui); font-weight: 600; color: var(--ink-soft); margin-top: 4px; }
 .tree-file { padding-left: 15px; }
 .tree-children { padding-left: 10px; }
 .tree-node.selected { background: var(--accent-soft); color: var(--accent-ink); }
@@ -250,7 +267,7 @@ body {
 #mode-switch button {
     background: none; border: none;
     padding: 3px 10px;
-    font-family: var(--font-display); font-size: 12px; font-weight: 600;
+    font-family: var(--font-ui); font-size: 12px; font-weight: 600;
     color: var(--ink-faint);
     cursor: pointer;
 }
@@ -270,12 +287,16 @@ body {
 }
 .preview > :first-child { margin-top: 0; }
 .preview h1, .preview h2, .preview h3, .preview h4, .preview h5, .preview h6 {
-    font-family: var(--font-display); font-weight: 700; line-height: 1.25;
+    font-family: var(--font-display); font-weight: 700; line-height: 1.2;
+    text-shadow: var(--chalk-glow);
     margin: 1.6em 0 0.5em;
 }
-.preview h1 { font-size: 2em; padding-bottom: 0.25em; border-bottom: 3px double var(--rule); }
-.preview h2 { font-size: 1.5em; padding-bottom: 0.2em; border-bottom: 1px solid var(--rule-soft); }
-.preview h3 { font-size: 1.25em; }
+.preview h1 {
+    font-size: 2.3em; padding-bottom: 0.3em;
+    background: linear-gradient(90deg, var(--rule), var(--rule) 70%, transparent) bottom / 100% 1.5px no-repeat;
+}
+.preview h2 { font-size: 1.75em; padding-bottom: 0.2em; border-bottom: 1px solid var(--rule-soft); }
+.preview h3 { font-size: 1.4em; }
 .preview h4, .preview h5, .preview h6 { font-size: 1em; }
 .preview p, .preview ul, .preview ol, .preview blockquote, .preview pre, .preview table { margin: 0 0 1em; }
 .preview ul, .preview ol { padding-left: 1.6em; }
@@ -303,7 +324,7 @@ body {
 .preview img { max-width: 100%; }
 .preview table { border-collapse: collapse; display: block; overflow-x: auto; }
 .preview th, .preview td { border: 1px solid var(--rule-soft); padding: 6px 12px; text-align: left; }
-.preview th { font-family: var(--font-display); background: var(--bg-sheet-alt); }
+.preview th { font-family: var(--font-ui); background: var(--bg-sheet-alt); }
 .preview input[type="checkbox"] { margin-right: 0.4em; accent-color: var(--accent); }
 
 /* Status Bar */
@@ -332,16 +353,17 @@ body {
     box-shadow: var(--shadow-sheet);
 }
 #dialog[open] { animation: dialog-in 140ms ease-out; }
-#dialog::backdrop { background: #17150f80; backdrop-filter: blur(2px); }
+#dialog::backdrop { background: var(--backdrop); backdrop-filter: blur(2px); }
 @keyframes dialog-in {
     from { opacity: 0; transform: translateY(8px); }
     to   { opacity: 1; transform: none; }
 }
 #dialog-title {
     font-family: var(--font-display);
-    font-size: 19px; font-weight: 700;
-    padding-bottom: 8px; margin-bottom: 10px;
-    border-bottom: 1px solid var(--rule);
+    font-size: 25px; font-weight: 700; line-height: 1.15;
+    padding-bottom: 8px; margin-bottom: 12px;
+    text-shadow: var(--chalk-glow);
+    background: linear-gradient(90deg, var(--rule), var(--rule) 70%, transparent) bottom / 100% 1px no-repeat;
 }
 #dialog-message { font-size: 14px; color: var(--ink-soft); line-height: 1.5; margin-bottom: 14px; white-space: pre-wrap; }
 #dialog-message:empty { display: none; }
@@ -359,7 +381,7 @@ body {
 .dialog-buttons button {
     border-radius: 3px;
     padding: 7px 16px;
-    font-family: var(--font-display); font-size: 14px; font-weight: 600;
+    font-family: var(--font-ui); font-size: 14px; font-weight: 600;
     cursor: pointer;
 }
 .btn-primary { background: var(--accent); color: var(--ink-invert); border: 1px solid var(--accent); }
@@ -369,3 +391,7 @@ body {
 .btn-secondary { background: transparent; color: var(--ink); border: 1px solid var(--rule-soft); }
 .btn-secondary:hover { border-color: var(--rule); }
 .dialog-buttons button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* Chalk dust / paper grain over every surface. Last in the file so the
+   background shorthands above don't reset it. */
+#sidebar, #tabbar, .tab.active, .editor, .preview, #statusbar, #dialog { background-image: var(--texture); }

@@ -221,11 +221,9 @@ async function revealInTree(path) {
     highlightSelection();
 }
 
-// Theme toggle. The <head> script already applied the saved/system theme;
-// a click saves an explicit choice, and with no saved choice we keep
-// following the system setting live.
+// Theme toggle. The <head> script already applied the saved theme (dark by
+// default); a click switches and remembers the choice.
 const btnTheme = document.getElementById('btn-theme');
-const systemDark = matchMedia('(prefers-color-scheme: dark)');
 
 function applyTheme(theme) {
     document.documentElement.dataset.theme = theme;
@@ -240,11 +238,6 @@ btnTheme.addEventListener('click', () => {
     applyTheme(next);
 });
 
-systemDark.addEventListener('change', (e) => {
-    let saved = null;
-    try { saved = localStorage.getItem('txt-theme'); } catch (err) {}
-    if (!saved) applyTheme(e.matches ? 'dark' : 'light');
-});
 
 applyTheme(document.documentElement.dataset.theme);
 

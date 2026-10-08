@@ -9,7 +9,7 @@ offline, and only listens on `127.0.0.1`.
 - **Markdown**: `.md` files open rendered; **Edit** shows text and live preview side by side.
 - **Session restore**: tabs and unsaved text survive reloads and restarts.
 - **Safe saves**: atomic writes; never overwrites a file changed on disk.
-- **Light and dark themes**, following your system by default.
+- **Slate chalkboard theme** by default, with a light paper theme a click away.
 - **Sandboxed**: can't touch anything outside the folder you open.
 
 ## Install
@@ -106,8 +106,7 @@ install.sh          installer
 
 ## License
 
-[MIT](LICENSE). Bundled fonts ([Lora](https://github.com/cyrealtype/Lora-Cyrillic),
-[PT Serif](https://www.paratype.com/public)) are under the SIL Open Font License;
+[MIT](LICENSE). Bundled fonts ([Cormorant Garamond](https://github.com/CatharsisFonts/Cormorant),
+[Literata](https://github.com/googlefonts/literata)) are under the SIL Open Font License;
 [marked](https://github.com/markedjs/marked) is MIT;
 [DOMPurify](https://github.com/cure53/DOMPurify) is MPL-2.0 or Apache-2.0.
-Palette inspired by [The Daily Diff](https://tdd.cat).

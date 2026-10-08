@@ -1,7 +1,7 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
-  <!-- Fountain-pen nib: cream on an oxblood disc -->
-  <circle cx="32" cy="32" r="31" fill="#8a1f11"/>
-  <path fill="#f8f4e8" fill-rule="evenodd" d="M23 12h18v8c5 6 6 13 1 20l-10 14-10-14c-5-7-4-14 1-20zM32 33.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7z"/>
-  <path d="M32 40.5V54" stroke="#8a1f11" stroke-width="2"/>
-  <path d="M23 20h18" stroke="#8a1f11" stroke-width="1.6"/>
+  <!-- Chalkboard: near-black slate in a grey frame, chalk-white pen nib, chalk-blue on the ledge -->
+  <rect width="64" height="64" rx="14" fill="#1a1d21"/>
+  <rect x="2.5" y="2.5" width="59" height="59" rx="11.5" fill="none" stroke="#4a515c" stroke-width="3"/>
+  <g transform="translate(0 -2)"><path fill="#e8eaee" fill-rule="evenodd" d="M23 12h18v8c5 6 6 13 1 20l-10 14-10-14c-5-7-4-14 1-20zM32 33.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7z"/><path d="M32 40.5V54" stroke="#1a1d21" stroke-width="2"/><path d="M23 20h18" stroke="#1a1d21" stroke-width="1.6"/></g>
+  <path d="M19 58.5h26" stroke="#9cc4ea" stroke-width="2.4" stroke-linecap="round" opacity=".9"/>
 </svg>
