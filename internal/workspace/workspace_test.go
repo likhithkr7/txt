@@ -209,3 +209,29 @@ func TestMarkdownFiles(t *testing.T) {
 		}
 	}
 }
+
+// One unreadable folder must not hide the rest of the workspace.
+func TestTreeSkipsUnreadableDirs(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root can read everything")
+	}
+	dir := t.TempDir()
+	os.WriteFile(filepath.Join(dir, "ok.txt"), []byte("ok\n"), 0644)
+	locked := filepath.Join(dir, "locked")
+	os.Mkdir(locked, 0755)
+	os.WriteFile(filepath.Join(locked, "secret.txt"), []byte("s\n"), 0644)
+	os.Chmod(locked, 0)
+	t.Cleanup(func() { os.Chmod(locked, 0755) })
+
+	ws, err := Open(dir)
+	if err != nil {
+		t.Fatalf("Failed to open workspace: %v", err)
+	}
+	tree, err := ws.Tree()
+	if err != nil {
+		t.Fatalf("Tree failed because of one unreadable folder: %v", err)
+	}
+	if len(tree.Children) != 1 || tree.Children[0].Name != "ok.txt" {
+		t.Errorf("tree = %+v, want just ok.txt", tree.Children)
+	}
+}

@@ -20,8 +20,10 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync/atomic"
 	"syscall"
 	"time"
+	"txt/internal/update"
 	"txt/internal/workspace"
 	"txt/web"
 )
@@ -113,6 +115,43 @@ func openBrowser(url string) error {
 	return err
 }
 
+// runUpdate replaces this binary with the latest release (txt -update).
+func runUpdate() {
+	if version == "dev" {
+		fatalf("this is a development build; to switch to a release, use the installer:\n" +
+			"  curl -fsSL https://raw.githubusercontent.com/" + update.Repo + "/main/install.sh | sh")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+
+	fmt.Println("Checking for updates...")
+	latest, err := update.Latest(ctx)
+	if err != nil {
+		fatalf("checking for updates: %v", err)
+	}
+	if !update.Newer(latest, version) {
+		fmt.Printf("txt v%s is the latest version.\n", version)
+		return
+	}
+
+	exe, err := os.Executable()
+	if err == nil {
+		exe, err = filepath.EvalSymlinks(exe)
+	}
+	if err != nil {
+		fatalf("finding the txt binary: %v", err)
+	}
+
+	fmt.Printf("Downloading txt v%s...\n", latest)
+	if err := update.Apply(ctx, latest, exe); err != nil {
+		if errors.Is(err, os.ErrPermission) {
+			fatalf("%v\nNo permission to replace %s; try: sudo txt -update", err, exe)
+		}
+		fatalf("updating: %v", err)
+	}
+	fmt.Printf("Updated txt v%s -> v%s\n", version, latest)
+}
+
 // fatalf prints an error in the usual "prog: message" form and exits.
 func fatalf(format string, args ...any) {
 	fmt.Fprintf(os.Stderr, "txt: "+format+"\n", args...)
@@ -129,6 +168,7 @@ func main() {
 	noOpen := flag.Bool("no-open", false, "don't open a browser; just print the link")
 	verbose := flag.Bool("v", false, "log every HTTP request")
 	showVersion := flag.Bool("version", false, "print the version and exit")
+	doUpdate := flag.Bool("update", false, "update txt to the latest release and exit")
 	flag.Usage = func() {
 		fmt.Fprintln(os.Stderr, "Usage: txt [flags] [dir | file.txt | file.md]")
 		fmt.Fprintln(os.Stderr, "\nEdit the .txt and .md files in a folder (default: the current one) in your browser.")
@@ -139,6 +179,10 @@ func main() {
 
 	if *showVersion {
 		fmt.Printf("txt %s\n", version)
+		return
+	}
+	if *doUpdate {
+		runUpdate()
 		return
 	}
 
@@ -358,6 +402,18 @@ func main() {
 
 	// Editor session (open tabs, unsaved text). The frontend owns the format;
 	// the server only checks it's JSON and stores it in the workspace.
+	// Version info for the UI's "update available" notice. latestRelease is
+	// filled in by the background check below, if it finds something newer.
+	var latestRelease atomic.Pointer[string]
+	mux.HandleFunc("GET /api/version", func(w http.ResponseWriter, r *http.Request) {
+		info := map[string]string{"version": version}
+		if latest := latestRelease.Load(); latest != nil {
+			info["latest"] = *latest
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(info)
+	})
+
 	mux.HandleFunc("GET /api/session", func(w http.ResponseWriter, r *http.Request) {
 		data, err := ws.ReadSession()
 		if err != nil {
@@ -417,6 +473,21 @@ func main() {
 		fmt.Printf("  Open this link to start (it includes a one-time login token):\n  %s\n\n", loginURL)
 	}
 	fmt.Println("Press Ctrl+C to stop.")
+
+	// Look for a newer release in the background; never delays startup.
+	// Skipped for local builds and when TXT_NO_UPDATE_CHECK is set.
+	if version != "dev" && os.Getenv("TXT_NO_UPDATE_CHECK") == "" {
+		go func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			latest, err := update.Latest(ctx)
+			if err != nil || !update.Newer(latest, version) {
+				return
+			}
+			latestRelease.Store(&latest)
+			fmt.Printf("\nUpdate available: txt v%s (you have v%s). Stop txt and run: txt -update\n", latest, version)
+		}()
+	}
 
 	srv := &http.Server{Handler: handler}
 

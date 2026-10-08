@@ -213,7 +213,7 @@ ensure_on_path() {
         printf '\n# Added by the txt installer\n%s\n' "$line" >>"$rc"
         ok "Added ${INSTALL_DIR} to your PATH in ${rc}"
     fi
-    warn "Open a new terminal (or run: ${BOLD}${line}${RESET}) to use txt."
+    warn "To use txt in this terminal, run: ${BOLD}source ${rc}${RESET}"
 }
 
 main "$@"

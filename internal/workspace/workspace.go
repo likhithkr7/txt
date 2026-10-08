@@ -313,7 +313,9 @@ func buildTree(fileSystem fs.FS, dirPath string) (*Node, error) {
 			// Recurse into the directory
 			childNode, err := buildTree(fileSystem, fullPath)
 			if err != nil {
-				return nil, err
+				// A folder we can't read (permissions, macOS privacy
+				// protection) is left out rather than failing the whole tree
+				continue
 			}
 			// Add the folder if it contains a valid file, or if it is empty
 			// (e.g. freshly created from the UI). Folders holding only

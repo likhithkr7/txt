@@ -92,19 +92,40 @@ DOM.dialogCancel.addEventListener('click', () => DOM.dialog.close('cancel'));
 const showAlert = (title, message = '') => showDialog({ title, message, cancel: false });
 
 // Step 2: Fetch and render the tree
+// Every txt run has its own login, so a tab left open from an earlier run
+// is no longer signed in (the server answers 401).
+const SESSION_ENDED = "This tab is from an earlier run of txt. Use the tab txt opened when it " +
+    "started, or the link it printed in your terminal.";
+
+function showTreeMessage(text, className) {
+    const el = document.createElement('div');
+    el.className = className;
+    el.textContent = text;
+    DOM.tree.replaceChildren(el);
+}
+
 async function loadTree() {
     try {
         const res = await fetch('/api/tree');
-        if (!res.ok) throw new Error('Failed to load tree');
+        if (res.status === 401) {
+            showTreeMessage(SESSION_ENDED, 'tree-error');
+            return;
+        }
+        if (!res.ok) throw new Error((await res.text()).trim() || `HTTP ${res.status}`);
         const rootNode = await res.json();
 
         DOM.tree.innerHTML = '';
+        const children = rootNode.children || [];
+        if (children.length === 0) {
+            showTreeMessage("No .txt or .md files here yet. Create one with +, or start typing and press Cmd+S.", 'tree-empty');
+            return;
+        }
         // Render the root's children directly; the "." row adds nothing
-        (rootNode.children || []).forEach(child => renderNode(child, DOM.tree));
+        children.forEach(child => renderNode(child, DOM.tree));
         highlightSelection();
     } catch (err) {
         console.error(err);
-        DOM.tree.innerHTML = '<div class="tree-error">Error loading tree</div>';
+        showTreeMessage(`Couldn't load files: ${err.message}`, 'tree-error');
     }
 }
 
@@ -394,6 +415,10 @@ async function openFile(path) {
 
     try {
         const res = await fetch(`/api/file?path=${encodeURIComponent(path)}`);
+        if (res.status === 401) {
+            showAlert("Not signed in", SESSION_ENDED);
+            return;
+        }
         if (res.status === 413) {
             showAlert("File too large", `${path} is over the 4 MB limit.`);
             return;
@@ -792,6 +817,10 @@ async function writeTab(tab, path, baseVersion) {
             }
             return false;
         }
+        if (res.status === 401) {
+            showAlert("Not signed in", SESSION_ENDED + " Copy your text first: it can't be saved from this tab.");
+            return false;
+        }
         if (res.status === 404) {
             showAlert("Folder not found", `The folder for ${path} doesn't exist. Create it first with + → New folder.`);
             return false;
@@ -931,6 +960,39 @@ document.getElementById('btn-new-dir').addEventListener('click', async () => {
         showAlert("Error creating folder", String(err.message || err));
     }
 });
+
+// ---------------------------------------------------------------------------
+// Update notice: the server checks GitHub for a newer release in the
+// background at startup; if it finds one, show a link in the status bar.
+// ---------------------------------------------------------------------------
+
+const statUpdate = document.getElementById('stat-update');
+
+async function checkForUpdate() {
+    try {
+        const res = await fetch('/api/version');
+        if (!res.ok) return false;
+        const { version, latest } = await res.json();
+        if (!latest) return false;
+        statUpdate.textContent = `Update available: v${latest}`;
+        statUpdate.hidden = false;
+        statUpdate.onclick = () => showAlert(
+            "Update available",
+            `txt v${latest} is out (you have v${version}).\n\n` +
+            "To update, stop txt with Ctrl+C in its terminal, then run:\n\n" +
+            "    txt -update\n\n" +
+            "and start txt again. Your open tabs and unsaved text will be restored."
+        );
+        return true;
+    } catch (err) {
+        return false;
+    }
+}
+
+// The server's check takes a moment after startup; look twice
+setTimeout(async () => {
+    if (!(await checkForUpdate())) setTimeout(checkForUpdate, 8000);
+}, 3000);
 
 // Initial load: restore the last session (or start with an empty untitled
 // tab). If txt was started with a file (`txt notes.txt`), open it too.
