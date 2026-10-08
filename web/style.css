@@ -1,0 +1,288 @@
+/* Fonts (bundled, latin subset; both SIL Open Font License) */
+@font-face { font-family: "Lora"; font-style: normal; font-weight: 400 700; font-display: swap; src: url(/fonts/lora.woff2) format("woff2"); }
+@font-face { font-family: "PT Serif"; font-style: normal; font-weight: 400; font-display: swap; src: url(/fonts/pt-serif-400.woff2) format("woff2"); }
+@font-face { font-family: "PT Serif"; font-style: normal; font-weight: 700; font-display: swap; src: url(/fonts/pt-serif-700.woff2) format("woff2"); }
+
+/* Theme tokens: newsprint palette. <html data-theme> is set before paint
+   (saved choice, else system setting) and flipped by the toggle in app.js. */
+:root {
+    color-scheme: light;
+    --font-display: "Lora", Georgia, "Times New Roman", serif;
+    --font-body: "PT Serif", Georgia, "Times New Roman", serif;
+
+    --bg-page: #e7e1d1;
+    --bg-sheet: #f8f4e8;
+    --bg-sheet-alt: #efe8d4;
+    --bg-well: #fff;
+    --ink: #1b1a17;
+    --ink-soft: #45423a;
+    --ink-faint: #7c7563;
+    --ink-invert: #f8f4e8;
+    --rule: #201e19;
+    --rule-soft: #201e1947;
+    --rule-hair: #201e1929;
+    --accent: #8a1f11;
+    --accent-hover: #a3291a;
+    --accent-soft: #8a1f1114;
+    --accent-ink: #8a1f11;
+    --danger: #8a1f11;
+    --danger-hover: #a3291a;
+    --bg-selection: #8a1f1129;
+    --shadow-sheet: 0 1px 2px #1b1a170f, 0 18px 40px -22px #1b1a1759;
+}
+
+:root[data-theme="dark"] {
+    color-scheme: dark;
+    --bg-page: #17150f;
+    --bg-sheet: #221f19;
+    --bg-sheet-alt: #2a2520;
+    --bg-well: #1c1913;
+    --ink: #d9d0bd;
+    --ink-soft: #b0a790;
+    --ink-faint: #7f7663;
+    --ink-invert: #221f19;
+    --rule: #b0a790;
+    --rule-soft: #d9d0bd38;
+    --rule-hair: #d9d0bd1f;
+    --accent: #cc9a56;
+    --accent-hover: #dcae6d;
+    --accent-soft: #cc9a561f;
+    --accent-ink: #dcae6d;
+    --danger: #c65a44;
+    --danger-hover: #d66d57;
+    --bg-selection: #cc9a5640;
+    --shadow-sheet: 0 1px 2px #0000004d, 0 18px 40px -22px #0000008c;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+::selection { background: var(--bg-selection); }
+* { scrollbar-color: var(--rule-soft) transparent; }
+
+body {
+    font-family: var(--font-body);
+    background: var(--bg-page);
+    color: var(--ink);
+    display: grid;
+    grid-template-columns: 260px 1fr;
+    height: 100vh;
+    overflow: hidden;
+}
+
+/* Sidebar */
+#sidebar {
+    background: var(--bg-sheet-alt);
+    display: flex; flex-direction: column;
+    border-right: 1px solid var(--rule-soft);
+    min-height: 0;
+}
+#masthead {
+    font-family: var(--font-display);
+    font-size: 26px; font-weight: 700;
+    letter-spacing: 0.02em;
+    text-align: center;
+    padding: 14px 14px 10px;
+    margin: 0 14px;
+    border-bottom: 3px double var(--rule);
+    position: relative;
+}
+#btn-theme { position: absolute; right: -4px; top: 50%; transform: translateY(-50%); }
+:root[data-theme="dark"] .icon-moon,
+:root:not([data-theme="dark"]) .icon-sun { display: none; }
+
+/* Small square icon buttons (theme toggle, "+") */
+.icon-btn {
+    width: 28px; height: 28px;
+    display: inline-grid; place-items: center;
+    background: transparent; color: var(--ink-soft);
+    border: none; border-radius: 3px;
+    cursor: pointer;
+    transition: color .15s, background-color .15s;
+}
+.icon-btn:hover, .icon-btn[aria-expanded="true"] { color: var(--accent-ink); background: var(--accent-soft); }
+.icon-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.icon-btn svg, #new-menu svg {
+    width: 16px; height: 16px;
+    fill: none; stroke: currentColor; stroke-width: 1.8;
+    stroke-linecap: round; stroke-linejoin: round;
+}
+
+/* "Files" header with the "+" menu */
+#tree-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 12px 10px 4px 16px;
+}
+#tree-header > span {
+    font-family: var(--font-display);
+    font-size: 11px; font-weight: 600;
+    letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--ink-faint);
+}
+.menu-wrap { position: relative; }
+#new-menu {
+    position: absolute; right: 0; top: calc(100% + 4px); z-index: 10;
+    min-width: 160px;
+    display: flex; flex-direction: column;
+    background: var(--bg-sheet);
+    border: 1px solid var(--rule-soft); border-radius: 4px;
+    box-shadow: var(--shadow-sheet);
+    padding: 4px;
+}
+#new-menu[hidden] { display: none; }
+#new-menu button {
+    display: flex; align-items: center; gap: 10px;
+    background: none; border: none; border-radius: 3px;
+    padding: 7px 10px;
+    font-family: var(--font-body); font-size: 14px; color: var(--ink);
+    text-align: left; cursor: pointer;
+}
+#new-menu button:hover, #new-menu button:focus-visible { outline: none; background: var(--accent-soft); color: var(--accent-ink); }
+#new-menu svg { color: var(--ink-faint); }
+#new-menu button:hover svg, #new-menu button:focus-visible svg { color: inherit; }
+
+#tree { flex: 1; overflow-y: auto; padding: 4px 10px 10px; font-size: 14px; }
+.tree-node {
+    cursor: pointer;
+    padding: 2px 0 2px 6px;
+    border-radius: 3px;
+    white-space: nowrap;
+    overflow: hidden; text-overflow: ellipsis;
+}
+.tree-node:hover { color: var(--accent-ink); }
+.tree-dir { font-family: var(--font-display); font-weight: 600; color: var(--ink-soft); margin-top: 4px; }
+.tree-file { padding-left: 15px; }
+.tree-node.selected { background: var(--accent-soft); color: var(--accent-ink); }
+.tree-error { color: var(--danger); font-style: italic; }
+
+/* Main Editor Area */
+#main { display: grid; grid-template-rows: 38px 1fr 28px; min-width: 0; min-height: 0; }
+
+/* Tab bar */
+#tabbar {
+    display: flex; align-items: stretch;
+    background: var(--bg-sheet-alt);
+    border-bottom: 1px solid var(--rule-soft);
+    min-width: 0;
+}
+#tabs {
+    display: flex; align-items: stretch;
+    overflow-x: auto; overflow-y: hidden;
+    scrollbar-width: none;
+    min-width: 0;
+}
+#tabs::-webkit-scrollbar { display: none; }
+#btn-new-tab { align-self: center; margin: 0 6px; flex: none; }
+.tab {
+    display: flex; align-items: center; gap: 6px;
+    flex: none;
+    max-width: 220px;
+    padding: 0 6px 0 14px;
+    border-right: 1px solid var(--rule-hair);
+    border-top: 2px solid transparent;
+    margin-bottom: -1px; /* lets the active tab cover the bar's bottom rule */
+    color: var(--ink-faint);
+    font-size: 13px;
+    cursor: pointer;
+    user-select: none;
+}
+.tab:hover { color: var(--ink-soft); }
+.tab.dragging { opacity: 0.45; }
+.tab.active {
+    background: var(--bg-sheet);
+    color: var(--ink);
+    border-top-color: var(--accent);
+    border-bottom: 1px solid var(--bg-sheet);
+}
+.tab-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tab.untitled .tab-name { font-style: italic; }
+/* Close button: hidden until hover/active; shows a dot while unsaved (Sublime-style) */
+.tab-close {
+    width: 18px; height: 18px; flex: none;
+    display: grid; place-items: center;
+    background: none; border: none; border-radius: 3px;
+    color: inherit; font-size: 15px; line-height: 1;
+    cursor: pointer;
+    visibility: hidden;
+}
+.tab:hover .tab-close, .tab.active .tab-close, .tab.dirty .tab-close { visibility: visible; }
+.tab-close::before { content: "×"; }
+.tab.dirty .tab-close::before { content: "●"; font-size: 9px; color: var(--accent-ink); }
+.tab.dirty .tab-close:hover::before { content: "×"; font-size: 15px; color: inherit; }
+.tab-close:hover { background: var(--accent-soft); color: var(--accent-ink); }
+
+/* Editors: one textarea per tab, only the active one shown */
+#editors { display: grid; min-height: 0; min-width: 0; }
+.editor {
+    grid-area: 1 / 1;
+    width: 100%; height: 100%;
+    background: var(--bg-sheet); color: var(--ink);
+    border: none;
+    /* Centre a readable column while keeping the scrollbar at the window edge */
+    padding: 36px max(40px, calc((100% - 760px) / 2));
+    font-family: var(--font-body); font-size: 17px; line-height: 1.65;
+    resize: none; /* Required so it doesn't break grid layout */
+    outline: none;
+    white-space: pre; /* No wrapping: long lines scroll horizontally */
+    overflow-wrap: normal;
+    overflow: auto;
+    tab-size: 4;
+}
+.editor::placeholder { color: var(--ink-faint); font-style: italic; }
+
+/* Status Bar */
+#statusbar {
+    background: var(--bg-sheet-alt); color: var(--ink-faint);
+    border-top: 1px solid var(--rule-soft);
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 0 16px;
+    font-size: 12px; letter-spacing: 0.02em;
+}
+#stat-path { color: var(--ink-soft); }
+#stat-dirty.unsaved { color: var(--accent-ink); font-weight: 700; }
+
+/* Dialog (replaces native prompt/alert/confirm) */
+#dialog {
+    margin: auto;
+    width: min(420px, calc(100vw - 32px));
+    background: var(--bg-sheet); color: var(--ink);
+    border: 1px solid var(--rule-soft); border-radius: 4px;
+    padding: 22px 24px;
+    box-shadow: var(--shadow-sheet);
+}
+#dialog[open] { animation: dialog-in 140ms ease-out; }
+#dialog::backdrop { background: #17150f80; backdrop-filter: blur(2px); }
+@keyframes dialog-in {
+    from { opacity: 0; transform: translateY(8px); }
+    to   { opacity: 1; transform: none; }
+}
+#dialog-title {
+    font-family: var(--font-display);
+    font-size: 19px; font-weight: 700;
+    padding-bottom: 8px; margin-bottom: 10px;
+    border-bottom: 1px solid var(--rule);
+}
+#dialog-message { font-size: 14px; color: var(--ink-soft); line-height: 1.5; margin-bottom: 14px; white-space: pre-wrap; }
+#dialog-message:empty { display: none; }
+#dialog-input {
+    width: 100%;
+    background: var(--bg-well); color: var(--ink);
+    border: 1px solid var(--rule-soft); border-radius: 3px;
+    padding: 9px 11px;
+    font-family: var(--font-body); font-size: 15px;
+    outline: none;
+}
+#dialog-input::placeholder { color: var(--ink-faint); font-style: italic; }
+#dialog-input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.dialog-buttons { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px; }
+.dialog-buttons button {
+    border-radius: 3px;
+    padding: 7px 16px;
+    font-family: var(--font-display); font-size: 14px; font-weight: 600;
+    cursor: pointer;
+}
+.btn-primary { background: var(--accent); color: var(--ink-invert); border: 1px solid var(--accent); }
+.btn-primary:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
+.btn-primary.danger { background: var(--danger); border-color: var(--danger); }
+.btn-primary.danger:hover { background: var(--danger-hover); border-color: var(--danger-hover); }
+.btn-secondary { background: transparent; color: var(--ink); border: 1px solid var(--rule-soft); }
+.btn-secondary:hover { border-color: var(--rule); }
+.dialog-buttons button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }

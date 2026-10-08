@@ -1,0 +1,14 @@
+# Built binary (go build -o txt ./cmd/txt)
+/txt
+/txt.exe
+
+# txt's own session file, if you run txt on this folder
+.txt-session.json
+
+# Editor and tool settings
+.idea/
+.junie/
+.vscode/
+
+# OS clutter
+.DS_Store
