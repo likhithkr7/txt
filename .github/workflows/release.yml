@@ -1,0 +1,49 @@
+# Builds txt for every supported platform and publishes a GitHub Release
+# when a version tag is pushed:
+#
+#   git tag v0.1.0 && git push origin v0.1.0
+#
+# install.sh downloads the binaries this workflow uploads, so the asset
+# names (txt-<version>-<os>-<arch>[.exe]) and checksums.txt must stay in sync.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write # create the release and upload assets
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Test
+        run: go test ./...
+
+      - name: Build
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          mkdir dist
+          for target in darwin/amd64 darwin/arm64 linux/amd64 linux/arm64 windows/amd64 windows/arm64; do
+            os="${target%/*}"
+            arch="${target#*/}"
+            ext=""
+            [ "$os" = "windows" ] && ext=".exe"
+            # Static, reproducible builds: no cgo, no local paths, version stamped in
+            CGO_ENABLED=0 GOOS="$os" GOARCH="$arch" go build -trimpath \
+              -ldflags "-s -w -X main.version=${version}" \
+              -o "dist/txt-${version}-${os}-${arch}${ext}" ./cmd/txt
+          done
+          cd dist && sha256sum txt-* > checksums.txt && cat checksums.txt
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" dist/* --title "txt ${GITHUB_REF_NAME}" --generate-notes

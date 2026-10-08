@@ -26,16 +26,41 @@ sidebar and tabs. Everything stays on your machine: the server only listens on
 
 ## Install
 
+On macOS or Linux:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/likhithkr7/txt/main/install.sh | sh
+```
+
+The script downloads the right binary for your machine from
+[GitHub Releases](https://github.com/likhithkr7/txt/releases), checks its
+SHA-256 checksum, and installs it to `~/.local/bin` (or another writable folder
+already on your `PATH`), adding that folder to your `PATH` if needed. Run it
+again to update. Options, set as environment variables:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/likhithkr7/txt/main/install.sh | VERSION=0.1.0 sh
+curl -fsSL https://raw.githubusercontent.com/likhithkr7/txt/main/install.sh | INSTALL_DIR=~/bin sh
+```
+
+On Windows, download `txt-<version>-windows-amd64.exe` (or `-arm64.exe`) from the
+[releases page](https://github.com/likhithkr7/txt/releases), rename it to
+`txt.exe`, and put it in a folder on your `PATH`.
+
+To uninstall, delete the binary: `rm "$(command -v txt)"`.
+
+### From source
+
 Requires [Go](https://go.dev/dl/) 1.26 or newer.
 
 ```sh
-git clone <this repo> txt
+git clone https://github.com/likhithkr7/txt.git
 cd txt
 go build -o txt ./cmd/txt
 ```
 
-Then move the `txt` binary somewhere on your `PATH`, for example `~/bin`. The
-web UI and fonts are embedded in the binary, so it is the only file you need.
+The web UI, fonts and libraries are embedded in the binary, so it is the only
+file you need.
 
 ## Usage
 
@@ -63,6 +88,7 @@ link instead, including this run's one-time token.
 | `-port N`  | Port to listen on (default `7777`; falls back to a free port if busy) |
 | `-no-open` | Don't open a browser; print the login link instead           |
 | `-v`       | Log every HTTP request                                        |
+| `-version` | Print the version and exit                                   |
 
 ### Keyboard and mouse
 
@@ -131,8 +157,20 @@ go test ./...
 go run ./cmd/txt -no-open .
 ```
 
+### Releasing
+
+Push a version tag and GitHub Actions builds every platform and publishes the
+release that `install.sh` downloads (see `.github/workflows/release.yml`):
+
+```sh
+git tag v0.1.0
+git push origin v0.1.0
+```
+
 ```
 cmd/txt/            HTTP server, CLI flags, security middleware
+install.sh          one-line installer (downloads a release binary)
+.github/workflows/  release build: binaries for macOS, Linux, Windows
 internal/workspace/ sandboxed file access: tree, read, atomic save, session
 web/                embedded UI: index.html, style.css, app.js, theme.js (no build step)
 web/fonts/          Lora and PT Serif (SIL Open Font License, see OFL-*.txt)

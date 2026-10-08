@@ -119,10 +119,16 @@ func fatalf(format string, args ...any) {
 	os.Exit(1)
 }
 
+// version is set at build time by the release workflow:
+//
+//	go build -ldflags "-X main.version=1.2.3" ./cmd/txt
+var version = "dev"
+
 func main() {
 	port := flag.Int("port", 7777, "port to listen on (falls back to a free port if busy)")
 	noOpen := flag.Bool("no-open", false, "don't open a browser; just print the link")
 	verbose := flag.Bool("v", false, "log every HTTP request")
+	showVersion := flag.Bool("version", false, "print the version and exit")
 	flag.Usage = func() {
 		fmt.Fprintln(os.Stderr, "Usage: txt [flags] [dir | file.txt | file.md]")
 		fmt.Fprintln(os.Stderr, "\nEdit the .txt and .md files in a folder (default: the current one) in your browser.")
@@ -130,6 +136,11 @@ func main() {
 		flag.PrintDefaults()
 	}
 	flag.Parse()
+
+	if *showVersion {
+		fmt.Printf("txt %s\n", version)
+		return
+	}
 
 	args := flag.Args()
 	if len(args) > 1 {
