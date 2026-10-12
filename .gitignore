@@ -12,3 +12,6 @@
 
 # OS clutter
 .DS_Store
+
+# Personal notes, not part of the project
+/ideas.md

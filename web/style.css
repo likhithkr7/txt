@@ -5,68 +5,61 @@
 
 /* Theme tokens. <html data-theme> is set before paint (saved choice, else
    system setting) and flipped by the toggle in app.js.
-   Light: cool pale paper with graphite ink and slate-blue accents.
-   Dark: a near-black slate chalkboard with chalk-white text and chalk-blue accents. */
+   Plain neutral surfaces with one muted blue accent, in light and dark. */
 :root {
     color-scheme: light;
     --font-display: "Cormorant Garamond", Garamond, Georgia, serif; /* large titles only */
     --font-body: "Literata", Georgia, "Times New Roman", serif;
     --font-ui: var(--font-body); /* small labels: the display face is too fine */
 
-    --bg-page: #e8eaee;
-    --bg-sheet: #f6f7f9;
-    --bg-sheet-alt: #eef0f3;
-    --bg-well: #fff;
-    --ink: #23272e;
-    --ink-soft: #4a515c;
-    --ink-faint: #7a828e;
-    --ink-invert: #f6f7f9;
-    --rule: #23272e;
-    --rule-soft: #23272e33;
-    --rule-hair: #23272e1c;
-    --accent: #3a5a80;
-    --accent-hover: #476b94;
-    --accent-soft: #3a5a8014;
-    --accent-ink: #34537a;
-    --danger: #b5483d;
-    --danger-hover: #c45a4f;
-    --bg-selection: #3a5a8029;
-    --shadow-sheet: 0 1px 2px #23272e14, 0 22px 50px -24px #23272e59;
-    --backdrop: #23272e66;
-    --chalk-glow: none;
-    /* Fine paper grain */
-    --texture: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .14 0 0 0 0 .15 0 0 0 0 .18 .07 0 0 0 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    --bg-page: #f4f4f5;
+    --bg-sheet: #ffffff;
+    --bg-sheet-alt: #f7f7f8;
+    --bg-well: #ffffff;
+    --ink: #1d1d1f;
+    --ink-soft: #4b4b50;
+    --ink-faint: #86868b;
+    --ink-invert: #ffffff;
+    --rule: #1d1d1f;
+    --rule-soft: #1d1d1f26;
+    --rule-hair: #1d1d1f14;
+    --accent: #2f5fa8;
+    --accent-hover: #3a6cbb;
+    --accent-soft: #2f5fa814;
+    --accent-ink: #2a5597;
+    --danger: #c0392b;
+    --danger-hover: #d04a3c;
+    --bg-selection: #2f5fa82e;
+    --bg-match: #f5c84a59;
+    --bg-match-current: #f2b632;
+    --shadow-sheet: 0 1px 2px #1d1d1f14, 0 22px 50px -24px #1d1d1f4d;
+    --backdrop: #1d1d1f59;
 }
 
 :root[data-theme="dark"] {
     color-scheme: dark;
-    --bg-page: #131518;
-    --bg-sheet: #1a1d21;
-    --bg-sheet-alt: #15171a;
-    --bg-well: #121417;
-    --ink: #e8eaee;
-    --ink-soft: #b9bec7;
-    --ink-faint: #7f8692;
-    --ink-invert: #15171a;
-    --rule: #e8eaeeb3;
-    --rule-soft: #e8eaee2e;
-    --rule-hair: #e8eaee17;
-    --accent: #9cc4ea;
-    --accent-hover: #b6d4f0;
-    --accent-soft: #9cc4ea1f;
-    --accent-ink: #a9cdee;
-    --danger: #ee8f8f;
-    --danger-hover: #f3a7a7;
-    --bg-selection: #9cc4ea33;
+    --bg-page: #161618;
+    --bg-sheet: #1c1c1e;
+    --bg-sheet-alt: #19191b;
+    --bg-well: #141416;
+    --ink: #e8e8ea;
+    --ink-soft: #b4b4b9;
+    --ink-faint: #7c7c82;
+    --ink-invert: #1c1c1e;
+    --rule: #e8e8eab3;
+    --rule-soft: #e8e8ea29;
+    --rule-hair: #e8e8ea14;
+    --accent: #8fb4e8;
+    --accent-hover: #a8c5ee;
+    --accent-soft: #8fb4e81f;
+    --accent-ink: #9dbdea;
+    --danger: #ef8a80;
+    --danger-hover: #f4a39b;
+    --bg-selection: #8fb4e833;
+    --bg-match: #e6b4503d;
+    --bg-match-current: #e0a93b;
     --shadow-sheet: 0 1px 2px #00000080, 0 22px 50px -24px #000000cc;
-    --backdrop: #08090bb3;
-    /* Chalk lettering: a faint dusty halo around light strokes */
-    --chalk-glow: 0 0 1px #e8eaee52;
-    /* Chalk dust: fine cool-white specks plus two soft eraser smudges */
-    --texture:
-        url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .95 0 0 0 0 .97 0 0 0 0 1 .08 0 0 0 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E"),
-        radial-gradient(ellipse 60% 40% at 22% 28%, #ffffff09, transparent 70%),
-        radial-gradient(ellipse 50% 35% at 78% 72%, #ffffff07, transparent 70%);
+    --backdrop: #000000b3;
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -98,9 +91,7 @@ body {
     padding: 14px 14px 12px;
     margin: 0 14px;
     position: relative;
-    text-shadow: var(--chalk-glow);
-    /* A chalk stroke: fades in and out at the ends instead of a hard rule */
-    background: linear-gradient(90deg, transparent, var(--rule) 12%, var(--rule) 88%, transparent) bottom / 100% 1.5px no-repeat;
+    border-bottom: 1px solid var(--rule-soft);
 }
 #btn-theme { position: absolute; right: -4px; top: 50%; transform: translateY(-50%); }
 :root[data-theme="dark"] .icon-moon,
@@ -255,6 +246,56 @@ body {
 }
 .editor::placeholder { color: var(--ink-faint); font-style: italic; }
 
+/* View-only viewer for files over 4 MB or not UTF-8 (viewer.js). Fixed line height: the
+   viewer computes how many lines fit from it. */
+.viewer {
+    display: grid; grid-template-columns: 1fr 12px; grid-template-rows: auto 1fr;
+    min-height: 0; min-width: 0;
+    background: var(--bg-sheet); color: var(--ink);
+    outline: none;
+}
+.viewer-lines {
+    grid-row: 2; grid-column: 1; /* row 1 is the find bar, often hidden */
+    position: relative; /* offsetLeft of a match is measured from here */
+    min-height: 0; min-width: 0;
+    overflow-x: auto; overflow-y: hidden;
+    padding: 8px 16px; /* vertical padding must match PAD_Y */
+    font: 13px/20px ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    white-space: pre;
+    tab-size: 8;
+}
+.viewer-track { grid-row: 2; grid-column: 2; position: relative; border-left: 1px solid var(--rule-hair); touch-action: none; }
+.viewer-thumb {
+    position: absolute; left: 2px; right: 2px; height: 32px;
+    border-radius: 4px; background: var(--rule-soft);
+}
+.viewer-lines mark { background: var(--bg-match); color: inherit; border-radius: 2px; }
+.viewer-lines mark.current { background: var(--bg-match-current); color: #1d1d1f; }
+
+/* Find bar at the top of the viewer (Cmd/Ctrl+F) */
+.viewer-search {
+    grid-column: 1 / -1;
+    display: flex; align-items: center; gap: 4px;
+    padding: 6px 10px;
+    border-bottom: 1px solid var(--rule-soft);
+    background: var(--bg-sheet-alt);
+    font-family: var(--font-ui); font-size: 13px;
+}
+.viewer-search[hidden] { display: none; }
+.viewer-search input {
+    flex: 0 1 300px; min-width: 0;
+    padding: 4px 8px;
+    border: 1px solid var(--rule-soft); border-radius: 4px;
+    background: var(--bg-well); color: var(--ink);
+    font: 13px ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    outline: none;
+}
+.viewer-search input:focus { border-color: var(--accent); }
+.viewer-search .vs-case { font: 600 12px var(--font-ui); }
+.viewer-search .vs-case[aria-pressed="true"] { color: var(--accent-ink); background: var(--accent-soft); }
+.vs-status { margin: 0 auto 0 6px; color: var(--ink-faint); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.viewer-track:hover .viewer-thumb, .viewer-thumb.dragging { background: var(--ink-faint); }
+
 /* Edit / Preview switch (Markdown tabs only) */
 #mode-switch {
     display: flex; align-self: center;
@@ -288,7 +329,6 @@ body {
 .preview > :first-child { margin-top: 0; }
 .preview h1, .preview h2, .preview h3, .preview h4, .preview h5, .preview h6 {
     font-family: var(--font-display); font-weight: 700; line-height: 1.2;
-    text-shadow: var(--chalk-glow);
     margin: 1.6em 0 0.5em;
 }
 .preview h1 {
@@ -362,7 +402,6 @@ body {
     font-family: var(--font-display);
     font-size: 25px; font-weight: 700; line-height: 1.15;
     padding-bottom: 8px; margin-bottom: 12px;
-    text-shadow: var(--chalk-glow);
     background: linear-gradient(90deg, var(--rule), var(--rule) 70%, transparent) bottom / 100% 1px no-repeat;
 }
 #dialog-message { font-size: 14px; color: var(--ink-soft); line-height: 1.5; margin-bottom: 14px; white-space: pre-wrap; }
@@ -391,7 +430,3 @@ body {
 .btn-secondary { background: transparent; color: var(--ink); border: 1px solid var(--rule-soft); }
 .btn-secondary:hover { border-color: var(--rule); }
 .dialog-buttons button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-
-/* Chalk dust / paper grain over every surface. Last in the file so the
-   background shorthands above don't reset it. */
-#sidebar, #tabbar, .tab.active, .editor, .preview, #statusbar, #dialog { background-image: var(--texture); }

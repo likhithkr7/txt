@@ -1,8 +1,11 @@
 // Resolve the theme before first paint to avoid a light/dark flash.
 // Loaded as a classic (blocking) script in <head>, not a module.
-// A saved choice wins; otherwise the dark slate theme is the default.
+// A saved choice wins; otherwise follow the system setting.
 (function () {
     var t;
     try { t = localStorage.getItem('txt-theme'); } catch (e) {}
-    document.documentElement.dataset.theme = t === 'light' ? 'light' : 'dark';
+    if (t !== 'light' && t !== 'dark') {
+        t = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    }
+    document.documentElement.dataset.theme = t;
 })();

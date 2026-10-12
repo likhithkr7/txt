@@ -1,12 +1,15 @@
 // Markdown rendering for the preview (vendored, see web/vendor/)
 import { marked } from './vendor/marked.esm.js';
 import DOMPurify from './vendor/purify.es.mjs';
+import { createViewer } from './viewer.js';
 
 // The Single Source of Truth
 const state = {
     // Open tabs, in tab-bar order. Each tab:
     // { id, path (null while untitled), name, editor (<textarea>), el (tab DOM),
-    //   savedContent, version, lineEnding }
+    //   savedContent, version, lineEnding, viewer }
+    // Files over 4 MB or not valid UTF-8 open view-only: `viewer` is set and `editor` is its
+    // element instead of a <textarea>.
     tabs: [],
     activeTab: null,
     nextTabId: 1,
@@ -221,8 +224,8 @@ async function revealInTree(path) {
     highlightSelection();
 }
 
-// Theme toggle. The <head> script already applied the saved theme (dark by
-// default); a click switches and remembers the choice.
+// Theme toggle. The <head> script already applied the saved theme (else the
+// system's); a click switches and remembers the choice.
 const btnTheme = document.getElementById('btn-theme');
 
 function applyTheme(theme) {
@@ -279,6 +282,7 @@ DOM.tree.addEventListener('click', () => select('.', true));
 
 // An untitled tab has never been saved, so it always counts as unsaved.
 function isDirty(tab) {
+    if (tab.viewer) return false;
     return tab.path === null || tab.editor.value !== tab.savedContent;
 }
 
@@ -287,10 +291,13 @@ function hasUnsavedWork(tab) {
     return tab.path === null ? tab.editor.value !== '' : isDirty(tab);
 }
 
-// Same rule as the server's NormalizeFileName: keep .txt/.md, else add .txt
-// ("notes" -> "notes.txt", "meeting.2026" -> "meeting.2026.txt")
+// Extensions txt opens; same list as the server's textExtensions
+const TEXT_FILE = /\.(txt|md|csv|tsv|log)$/i;
+
+// Same rule as the server's NormalizeFileName: keep a known extension, else
+// add .txt ("notes" -> "notes.txt", "meeting.2026" -> "meeting.2026.txt")
 function normalizeFileName(path) {
-    return /\.(txt|md)$/i.test(path) ? path : path + '.txt';
+    return TEXT_FILE.test(path) ? path : path + '.txt';
 }
 
 const isMarkdown = (tab) => /\.md$/i.test(tab.name);
@@ -304,14 +311,21 @@ function nextUntitledName() {
 }
 
 // `content` is the text on disk; `text` is what the editor shows. They differ
-// only when restoring a session with unsaved edits.
-function createTab({ path = null, name, content = '', text = content, version = '', lineEnding = 'lf' }) {
-    const editor = document.createElement('textarea');
-    editor.className = 'editor';
-    editor.wrap = 'off';
-    editor.spellcheck = false;
-    editor.placeholder = 'Start writing…';
-    editor.value = text;
+// only when restoring a session with unsaved edits. `size` (bytes) is given
+// instead of content for a file opened view-only.
+function createTab({ path = null, name, content = '', text = content, version = '', lineEnding = 'lf', size = null }) {
+    const viewer = size === null ? null : createViewer(path, size, {
+        onChange: () => { if (tab === state.activeTab) updateStatusBar(); },
+        onError: (err) => showAlert("Couldn't read file", `${path}: ${err.message}`)
+    });
+    const editor = viewer ? viewer.el : document.createElement('textarea');
+    if (!viewer) {
+        editor.className = 'editor';
+        editor.wrap = 'off';
+        editor.spellcheck = false;
+        editor.placeholder = 'Start writing…';
+        editor.value = text;
+    }
 
     // A pane holds the editor and, for Markdown, its rendered preview.
     // Only the active tab's pane is shown.
@@ -338,7 +352,7 @@ function createTab({ path = null, name, content = '', text = content, version = 
     // textarea reports scrollTop 0) and a restored position until first shown
     // `mode` is how a Markdown tab is shown: 'edit' (text + live preview side
     // by side) or 'preview' (rendered only); null for other files
-    const tab = { id: state.nextTabId++, path, name, editor, preview, pane, el, savedContent: content, version, lineEnding, view: null, mode: null };
+    const tab = { id: state.nextTabId++, path, name, editor, preview, pane, el, savedContent: content, version, lineEnding, view: null, mode: null, viewer };
 
     el.draggable = true;
     el.addEventListener('dragstart', (e) => {
@@ -471,14 +485,6 @@ async function openFile(path) {
             showAlert("Not signed in", SESSION_ENDED);
             return;
         }
-        if (res.status === 413) {
-            showAlert("File too large", `${path} is over the 4 MB limit.`);
-            return;
-        }
-        if (res.status === 415) {
-            showAlert("Can't open file", `${path} is not valid UTF-8 text.`);
-            return;
-        }
         if (!res.ok) throw new Error('Failed to fetch file');
 
         const data = await res.json();
@@ -499,7 +505,8 @@ async function openFile(path) {
             name: path.split('/').pop(),
             content: data.content,
             version: data.version,
-            lineEnding: data.lineEnding
+            lineEnding: data.lineEnding,
+            size: data.viewOnly ? data.size : null
         });
         activateTab(tab);
         if (replace) closeTab(placeholder);
@@ -515,9 +522,13 @@ function updateStatusBar() {
 
     const dirty = isDirty(tab);
     DOM.statPath.textContent = tab.path || tab.name;
-    DOM.statDirty.textContent = dirty ? "Unsaved •" : "Saved";
+    DOM.statDirty.textContent = tab.viewer ? "View only" : dirty ? "Unsaved •" : "Saved";
     DOM.statDirty.classList.toggle('unsaved', dirty);
     document.title = (dirty ? "• " : "") + tab.name + " - txt";
+    if (tab.viewer) {
+        DOM.statCounts.textContent = tab.viewer.status();
+        return;
+    }
 
     // Line and character counts
     const content = tab.editor.value;
@@ -544,7 +555,7 @@ const PURIFY_CONFIG = { FORBID_TAGS: ['style'], FORBID_ATTR: ['style'] };
 // The pane's layout follows: 'text' (editor only, non-Markdown), 'split'
 // (Markdown edit: text and preview side by side) or 'preview'.
 function setMode(tab, mode) {
-    tab.mode = isMarkdown(tab) ? (mode || tab.mode || 'preview') : null;
+    tab.mode = isMarkdown(tab) && !tab.viewer ? (mode || tab.mode || 'preview') : null;
     tab.pane.dataset.layout = !tab.mode ? 'text' : tab.mode === 'edit' ? 'split' : 'preview';
     if (!tab.mode) tab.preview.replaceChildren();
     else renderPreview(tab);
@@ -554,7 +565,7 @@ function setMode(tab, mode) {
 
 function updateModeSwitch() {
     const tab = state.activeTab;
-    modeSwitch.hidden = !(tab && isMarkdown(tab));
+    modeSwitch.hidden = !(tab && tab.mode);
     modeSwitch.querySelectorAll('button').forEach(btn => {
         btn.setAttribute('aria-pressed', String(!!tab && btn.dataset.mode === tab.mode));
     });
@@ -597,7 +608,7 @@ function onPreviewClick(tab, e) {
     // Resolve relative to the tab's folder; "../" can't climb above the root
     const dir = tab.path && tab.path.includes('/') ? tab.path.slice(0, tab.path.lastIndexOf('/') + 1) : '';
     const target = decodeURIComponent(new URL(href, 'http://workspace/' + dir).pathname.slice(1));
-    if (/\.(txt|md)$/i.test(target)) openFile(target);
+    if (TEXT_FILE.test(target)) openFile(target);
 }
 
 modeSwitch.addEventListener('click', (e) => {
@@ -650,7 +661,7 @@ DOM.tabbar.addEventListener('dblclick', (e) => {
 DOM.editors.addEventListener('keydown', (e) => {
     // Insert a real tab character instead of moving focus.
     // insertText keeps the browser's undo history intact.
-    if (e.key === 'Tab' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+    if (e.key === 'Tab' && e.target.tagName === 'TEXTAREA' && !e.ctrlKey && !e.metaKey && !e.altKey) {
         e.preventDefault();
         if (!document.execCommand('insertText', false, '\t')) {
             e.target.setRangeText('\t', e.target.selectionStart, e.target.selectionEnd, 'end');
@@ -677,7 +688,7 @@ document.addEventListener('keydown', (e) => {
         } else if (e.code === 'KeyW') {
             e.preventDefault();
             if (state.activeTab) closeTab(state.activeTab);
-        } else if (e.code === 'KeyP' && state.activeTab && isMarkdown(state.activeTab)) {
+        } else if (e.code === 'KeyP' && state.activeTab && state.activeTab.mode) {
             // Toggle Edit <-> Preview
             e.preventDefault();
             const tab = state.activeTab;
@@ -804,6 +815,11 @@ async function restoreSession() {
             // Gone from disk: keep unsaved text as an untitled tab, else drop it
             return hasText ? { name, text: s.text } : null;
         }
+        if (disk.viewOnly) {
+            // Now view-only on disk: unsaved text can't go back into it, so
+            // it becomes an untitled tab rather than being lost
+            return hasText ? { name, text: s.text } : { path: s.path, name, version: disk.version, size: disk.size };
+        }
         return {
             path: s.path,
             name,
@@ -826,7 +842,7 @@ async function restoreSession() {
         }
         const tab = createTab(spec);
         const s = entries[i];
-        if (Array.isArray(s.selection)) {
+        if (Array.isArray(s.selection) && !tab.viewer) {
             const len = tab.editor.value.length;
             tab.editor.setSelectionRange(Math.min(s.selection[0], len), Math.min(s.selection[1], len));
         }

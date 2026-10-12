@@ -19,10 +19,12 @@ import (
 	"os/signal"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"syscall"
 	"time"
+	"txt/internal/search"
 	"txt/internal/update"
 	"txt/internal/workspace"
 	"txt/web"
@@ -322,10 +324,6 @@ func main() {
 			// Map errors to HTTP status codes
 			if errors.Is(err, os.ErrNotExist) {
 				http.Error(w, "File not found", http.StatusNotFound)
-			} else if errors.Is(err, workspace.ErrTooLarge) {
-				http.Error(w, "File too large", http.StatusRequestEntityTooLarge)
-			} else if errors.Is(err, workspace.ErrNotUTF8) {
-				http.Error(w, "Unsupported media type", http.StatusUnsupportedMediaType)
 			} else {
 				http.Error(w, err.Error(), http.StatusInternalServerError)
 			}
@@ -334,6 +332,104 @@ func main() {
 
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(data)
+	})
+
+	// openRaw opens ?path= for the view-only endpoints below. On failure it
+	// has already written the error response.
+	openRaw := func(w http.ResponseWriter, r *http.Request) (*os.File, os.FileInfo, bool) {
+		f, err := ws.OpenRaw(r.URL.Query().Get("path"))
+		if err == nil {
+			info, statErr := f.Stat()
+			if statErr == nil {
+				return f, info, true
+			}
+			f.Close()
+			err = statErr
+		}
+		switch {
+		case errors.Is(err, os.ErrNotExist):
+			http.Error(w, "File not found", http.StatusNotFound)
+		case strings.Contains(err.Error(), "invalid path"):
+			http.Error(w, err.Error(), http.StatusBadRequest)
+		default:
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
+		return nil, nil, false
+	}
+
+	// Raw bytes of a file, for the view-only viewer of large files. Supports
+	// Range requests (http.ServeContent), so only what's on screen is read.
+	mux.HandleFunc("GET /api/raw", func(w http.ResponseWriter, r *http.Request) {
+		f, info, ok := openRaw(w, r)
+		if !ok {
+			return
+		}
+		defer f.Close()
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		http.ServeContent(w, r, "", info.ModTime(), f)
+	})
+
+	// Plain-text search in a file of any size: ?q=text, &case=1 for
+	// case-sensitive. Both scan with every core and stop if the browser
+	// cancels the request (a new query replaces the old one).
+	const maxQuery = 1024
+	searchQuery := func(w http.ResponseWriter, r *http.Request) (search.Query, bool) {
+		q := r.URL.Query().Get("q")
+		if q == "" || len(q) > maxQuery {
+			http.Error(w, "q must be 1 to 1024 bytes", http.StatusBadRequest)
+			return search.Query{}, false
+		}
+		return search.Query{Needle: []byte(q), Fold: r.URL.Query().Get("case") != "1"}, true
+	}
+
+	// Next match at or after ?from= (byte offset), or with &dir=prev the last
+	// one before it; wraps around. {"offset": -1} if there is none.
+	mux.HandleFunc("GET /api/find", func(w http.ResponseWriter, r *http.Request) {
+		q, ok := searchQuery(w, r)
+		if !ok {
+			return
+		}
+		from, err := strconv.ParseInt(r.URL.Query().Get("from"), 10, 64)
+		if err != nil || from < 0 {
+			http.Error(w, "from must be a byte offset", http.StatusBadRequest)
+			return
+		}
+		f, info, ok := openRaw(w, r)
+		if !ok {
+			return
+		}
+		defer f.Close()
+		at, err := search.Find(r.Context(), f, info.Size(), q, from, r.URL.Query().Get("dir") == "prev")
+		if err != nil {
+			if r.Context().Err() == nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+			}
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]int64{"offset": at})
+	})
+
+	// Number of matches in the whole file: {"count": n}
+	mux.HandleFunc("GET /api/count", func(w http.ResponseWriter, r *http.Request) {
+		q, ok := searchQuery(w, r)
+		if !ok {
+			return
+		}
+		f, info, ok := openRaw(w, r)
+		if !ok {
+			return
+		}
+		defer f.Close()
+		n, err := search.Count(r.Context(), f, info.Size(), q)
+		if err != nil {
+			if r.Context().Err() == nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+			}
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]int64{"count": n})
 	})
 
 	mux.HandleFunc("POST /api/file", func(w http.ResponseWriter, r *http.Request) {

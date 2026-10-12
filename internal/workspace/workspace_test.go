@@ -250,3 +250,51 @@ func TestListDirUnreadable(t *testing.T) {
 		t.Errorf("ListDir(.) = %v, %v; want the locked folder listed", root, err)
 	}
 }
+
+func TestLargeFileIsViewOnly(t *testing.T) {
+	dir := t.TempDir()
+	big := make([]byte, MaxFileSize+1)
+	for i := range big {
+		big[i] = 'a'
+	}
+	os.WriteFile(filepath.Join(dir, "big.csv"), big, 0644)
+	ws, _ := Open(dir)
+
+	data, err := ws.ReadFile("big.csv")
+	if err != nil || !data.ViewOnly || data.Size != int64(len(big)) || data.Content != "" {
+		t.Fatalf("expected view-only metadata without content, got %+v, %v", data, err)
+	}
+	if _, err := ws.SaveFile("big.csv", SaveRequest{Content: "x", BaseVersion: data.Version}); !errors.Is(err, ErrViewOnly) {
+		t.Errorf("saving over a view-only file: expected ErrViewOnly, got %v", err)
+	}
+	if got, _ := os.ReadFile(filepath.Join(dir, "big.csv")); len(got) != len(big) {
+		t.Errorf("view-only file was modified")
+	}
+
+	f, err := ws.OpenRaw("big.csv")
+	if err != nil {
+		t.Fatalf("OpenRaw: %v", err)
+	}
+	f.Close()
+	if _, err := ws.OpenRaw("../big.csv"); err == nil {
+		t.Errorf("OpenRaw should reject paths outside the workspace")
+	}
+}
+
+func TestNonUTF8IsViewOnly(t *testing.T) {
+	dir := t.TempDir()
+	latin1 := []byte("name\nCaf\xe9\n") // é in Latin-1: invalid UTF-8
+	os.WriteFile(filepath.Join(dir, "names.csv"), latin1, 0644)
+	ws, _ := Open(dir)
+
+	data, err := ws.ReadFile("names.csv")
+	if err != nil || !data.ViewOnly || data.Size != int64(len(latin1)) {
+		t.Fatalf("expected view-only metadata, got %+v, %v", data, err)
+	}
+	if _, err := ws.SaveFile("names.csv", SaveRequest{Content: "x", BaseVersion: data.Version}); !errors.Is(err, ErrViewOnly) {
+		t.Errorf("saving over a non-UTF-8 file: expected ErrViewOnly, got %v", err)
+	}
+	if got, _ := os.ReadFile(filepath.Join(dir, "names.csv")); string(got) != string(latin1) {
+		t.Errorf("non-UTF-8 file was modified")
+	}
+}

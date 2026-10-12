@@ -15,10 +15,13 @@ import (
 
 var (
 	ErrTooLarge = errors.New("file exceeds size limit")
-	ErrNotUTF8  = errors.New("file is not valid UTF-8")
+	ErrViewOnly = errors.New("file is view-only")
 	ErrConflict = errors.New("file modified externally")
 )
 
+// MaxFileSize is the largest file txt edits. Bigger files (and files that
+// aren't valid UTF-8) open view-only and
+// are read in byte ranges (OpenRaw), so their size has no limit.
 const MaxFileSize = 4 * 1024 * 1024 // 4 MB
 
 // SessionFile stores open tabs and unsaved text between runs. It lives at the
@@ -42,6 +45,10 @@ type FileData struct {
 	Content    string `json:"content"`
 	Version    string `json:"version"`
 	LineEnding string `json:"lineEnding"`
+	// Set instead of Content for files txt can't edit safely: over
+	// MaxFileSize, or not valid UTF-8 (saving would replace those bytes)
+	ViewOnly bool  `json:"viewOnly,omitempty"`
+	Size     int64 `json:"size,omitempty"`
 }
 
 type SaveRequest struct {
@@ -56,9 +63,9 @@ type SaveResponse struct {
 }
 
 // Extensions txt opens and lists. Anything else is treated as part of the name.
-var textExtensions = map[string]bool{".txt": true, ".md": true}
+var textExtensions = map[string]bool{".txt": true, ".md": true, ".csv": true, ".tsv": true, ".log": true}
 
-// IsTextFile reports whether name has an extension txt can open (.txt or .md).
+// IsTextFile reports whether name has an extension txt can open.
 func IsTextFile(name string) bool {
 	return textExtensions[strings.ToLower(path.Ext(name))]
 }
@@ -164,7 +171,8 @@ func (w *Workspace) ReadFile(rel string) (*FileData, error) {
 		return nil, err
 	}
 	if info.Size() > MaxFileSize {
-		return nil, ErrTooLarge
+		version := fmt.Sprintf("%d-%d", info.ModTime().UnixNano(), info.Size())
+		return &FileData{ViewOnly: true, Size: info.Size(), Version: version}, nil
 	}
 
 	// 3. Read with a hard limit to prevent TOCTOU size changes
@@ -179,7 +187,8 @@ func (w *Workspace) ReadFile(rel string) (*FileData, error) {
 
 	// 4. Validate UTF-8
 	if !utf8.Valid(data) {
-		return nil, ErrNotUTF8
+		version := fmt.Sprintf("%d-%d", info.ModTime().UnixNano(), info.Size())
+		return &FileData{ViewOnly: true, Size: info.Size(), Version: version}, nil
 	}
 
 	// 5. Detect and normalize line endings
@@ -200,6 +209,15 @@ func (w *Workspace) ReadFile(rel string) (*FileData, error) {
 	}, nil
 }
 
+// OpenRaw opens a file for reading byte ranges, whatever its size. The
+// caller closes it.
+func (w *Workspace) OpenRaw(rel string) (*os.File, error) {
+	if err := ValidatePath(rel, true); err != nil {
+		return nil, fmt.Errorf("invalid path: %w", err)
+	}
+	return w.root.OpenFile(rel, os.O_RDONLY, 0)
+}
+
 func (w *Workspace) SaveFile(rel string, req SaveRequest) (*SaveResponse, error) {
 	if err := ValidatePath(rel, true); err != nil {
 		return nil, fmt.Errorf("invalid path: %w", err)
@@ -213,6 +231,9 @@ func (w *Workspace) SaveFile(rel string, req SaveRequest) (*SaveResponse, error)
 
 	var originalMode os.FileMode = 0644
 	if err == nil {
+		if currentData.ViewOnly {
+			return nil, ErrViewOnly
+		}
 		if currentData.Version != req.BaseVersion {
 			return nil, ErrConflict
 		}
@@ -349,7 +370,7 @@ func ValidatePath(rel string, isFile bool) error {
 	}
 
 	if isFile && !IsTextFile(rel) {
-		return errors.New("files must end in .txt or .md")
+		return errors.New("files must end in .txt, .md, .csv, .tsv or .log")
 	}
 
 	return nil
