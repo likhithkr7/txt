@@ -249,13 +249,13 @@ body {
 /* View-only viewer for files over 4 MB or not UTF-8 (viewer.js). Fixed line height: the
    viewer computes how many lines fit from it. */
 .viewer {
-    display: grid; grid-template-columns: 1fr 12px; grid-template-rows: auto 1fr;
+    display: grid; grid-template-columns: auto 1fr 12px; grid-template-rows: auto auto 1fr;
     min-height: 0; min-width: 0;
     background: var(--bg-sheet); color: var(--ink);
     outline: none;
 }
 .viewer-lines {
-    grid-row: 2; grid-column: 1; /* row 1 is the find bar, often hidden */
+    grid-row: 3; grid-column: 2; /* rows 1-2: find bar and sticky header, often hidden */
     position: relative; /* offsetLeft of a match is measured from here */
     min-height: 0; min-width: 0;
     overflow-x: auto; overflow-y: hidden;
@@ -264,13 +264,44 @@ body {
     white-space: pre;
     tab-size: 8;
 }
-.viewer-track { grid-row: 2; grid-column: 2; position: relative; border-left: 1px solid var(--rule-hair); touch-action: none; }
+.viewer-track { grid-row: 3; grid-column: 3; position: relative; border-left: 1px solid var(--rule-hair); touch-action: none; }
 .viewer-thumb {
     position: absolute; left: 2px; right: 2px; height: 32px;
     border-radius: 4px; background: var(--rule-soft);
 }
 .viewer-lines mark { background: var(--bg-match); color: inherit; border-radius: 2px; }
 .viewer-lines mark.current { background: var(--bg-match-current); color: #1d1d1f; }
+
+/* Line numbers (column 1), as wide as the line count's digits */
+.viewer-gutter, .vh-num {
+    width: calc(var(--digits, 1) * 1ch);
+    padding: 0 8px 0 16px;
+    border-right: 1px solid var(--rule-hair);
+    font: 13px/20px ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    color: var(--ink-faint); text-align: right;
+    white-space: pre; user-select: none;
+}
+.viewer-gutter { grid-row: 3; grid-column: 1; overflow: hidden; padding-block: 8px; /* = PAD_Y */ }
+.viewer-gutter[hidden], .vh-num[hidden] { display: none; }
+
+/* First line of a CSV/TSV, kept on screen once it scrolls off (viewer.js);
+   its columns line up with the lines below */
+.viewer-header {
+    grid-row: 2; grid-column: 1 / -1;
+    display: grid; grid-template-columns: subgrid;
+    border-bottom: 1px solid var(--rule-soft);
+    background: var(--bg-sheet-alt);
+}
+.vh-num { grid-column: 1; }
+.vh-text {
+    grid-column: 2 / -1;
+    overflow: hidden;
+    padding-left: 16px; /* = .viewer-lines */
+    font: 600 13px/20px ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    white-space: pre;
+    tab-size: 8;
+}
+.viewer-header[hidden] { display: none; }
 
 /* Find bar at the top of the viewer (Cmd/Ctrl+F) */
 .viewer-search {

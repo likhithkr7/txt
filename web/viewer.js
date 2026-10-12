@@ -4,6 +4,8 @@
 // boundaries, is fetched with an HTTP Range request, and only the lines on
 // screen are drawn. The scrollbar maps to byte offset rather than line number,
 // so any point in the file is one fetch away and no line count is needed.
+// Line numbers come from the server, which indexes the file once: one
+// request per window gives the first line's number, and the rest follow.
 // Search (Cmd/Ctrl+F) runs on the server (/api/find, /api/count); the viewer
 // jumps to each match and highlights matches in the lines on screen.
 
@@ -19,6 +21,18 @@ export function createViewer(path, size, { onChange = () => {}, onError = () => 
     el.tabIndex = 0;
     const linesEl = document.createElement('div');
     linesEl.className = 'viewer-lines';
+    const gutter = document.createElement('div');
+    gutter.className = 'viewer-gutter';
+    gutter.hidden = true; // until the line count is known
+    const headerEl = document.createElement('div');
+    headerEl.className = 'viewer-header';
+    headerEl.hidden = true;
+    headerEl.innerHTML = '<span class="vh-num">1</span><span class="vh-text"></span>';
+    const headerNum = headerEl.firstChild, headerText = headerEl.lastChild;
+    headerNum.hidden = true;
+    // CSV/TSV: the first line stays on screen while scrolling
+    const hasHeader = /\.(csv|tsv)$/i.test(path);
+    let header = null; // the file's first line, once fetched
     const track = document.createElement('div');
     track.className = 'viewer-track';
     const thumb = document.createElement('div');
@@ -40,13 +54,16 @@ export function createViewer(path, size, { onChange = () => {}, onError = () => 
     const input = bar.querySelector('input');
     const caseBtn = bar.querySelector('.vs-case');
     const statusEl = bar.querySelector('.vs-status');
-    el.append(bar, linesEl, track);
+    el.append(bar, headerEl, gutter, linesEl, track);
 
     const url = `/api/raw?path=${encodeURIComponent(path)}`;
 
     // The loaded window: `bytes` starts at file offset `start`; `lines` holds
-    // the index in `bytes` where each complete line begins.
-    let win = { start: 0, bytes: new Uint8Array(0), lines: [] };
+    // the index in `bytes` where each complete line begins; `first` is the
+    // number of its first line, once the server says.
+    let win = { start: 0, bytes: new Uint8Array(0), lines: [], first: null };
+    let totalLines = null;
+    let linesFailed = false;
     let top = 0;          // index in win.lines of the first line on screen
     let loadSeq = 0;      // only the newest fetch may replace the window
     let loading = false;
@@ -95,8 +112,30 @@ export function createViewer(path, size, { onChange = () => {}, onError = () => 
         }
 
         const target = anchor();
-        win = { start, bytes, lines };
+        win = { start, bytes, lines, first: start === 0 ? 1 : null };
+        if (start === 0 && header === null) headerText.textContent = header = lineText(0);
         top = lineAt(target) - lead;
+        render();
+        if (lines.length && (win.first === null || totalLines === null)) numberLines(win);
+    }
+
+    // Ask the server for the number of w's first line (and the line count).
+    // The first ask waits for the file to be indexed: about a second per GB
+    // read from disk, much less if it's in memory.
+    async function numberLines(w) {
+        try {
+            const res = await fetch(`/api/lines?path=${encodeURIComponent(path)}&at=${w.start + w.lines[0]}`);
+            if (!res.ok) throw new Error(res.status === 401 ? 'not signed in' : (await res.text()).trim() || `HTTP ${res.status}`);
+            const d = await res.json();
+            w.first = d.line;
+            totalLines = d.total;
+        } catch (err) {
+            if (!linesFailed) onError(err); // once, not for every window
+            linesFailed = true;
+            return;
+        }
+        el.style.setProperty('--digits', String(totalLines).length);
+        gutter.hidden = headerNum.hidden = false;
         render();
     }
 
@@ -125,6 +164,9 @@ export function createViewer(path, size, { onChange = () => {}, onError = () => 
 
     function render() {
         clampTop();
+        // Shown once the first line scrolls off; set before visible() reads the height
+        headerEl.hidden = !(hasHeader && header !== null && win.lines.length && abs(top) > 0);
+        clampTop();
         const end = Math.min(win.lines.length, top + visible() + 1);
         if (!query) {
             const out = [];
@@ -132,6 +174,11 @@ export function createViewer(path, size, { onChange = () => {}, onError = () => 
             linesEl.textContent = out.join('\n');
         } else {
             linesEl.replaceChildren(highlighted(top, end));
+        }
+        if (!gutter.hidden) {
+            const nums = [];
+            for (let i = top; i < end; i++) nums.push(win.first === null ? '' : win.first + i);
+            gutter.textContent = nums.join('\n');
         }
         const atEnd = winEnd() === size && top + visible() >= win.lines.length;
         const fraction = !win.lines.length ? 0 : atEnd ? 1 : abs(top) / size;
@@ -373,6 +420,10 @@ export function createViewer(path, size, { onChange = () => {}, onError = () => 
     });
     track.addEventListener('lostpointercapture', () => thumb.classList.remove('dragging'));
 
+    // The header scrolls sideways with the lines
+    // (an indent, not scrollLeft, which stops at the header's own width)
+    linesEl.addEventListener('scroll', () => { headerText.style.textIndent = `${-linesEl.scrollLeft}px`; });
+
     // Redraw when the size changes, including when the tab is shown
     new ResizeObserver(() => render()).observe(linesEl);
 
@@ -385,7 +436,8 @@ export function createViewer(path, size, { onChange = () => {}, onError = () => 
             const gb = size / 2 ** 30;
             const human = gb >= 1 ? `${gb.toFixed(2)} GB` : `${(size / 2 ** 20).toFixed(1)} MB`;
             const pct = size ? Math.round(100 * (win.lines.length ? abs(top) : 0) / size) : 0;
-            return `${human} · ${pct}%`;
+            const lines = totalLines === null ? 'Counting lines…' : `${totalLines.toLocaleString()} lines`;
+            return `${lines} · ${human} · ${pct}%`;
         }
     };
 }

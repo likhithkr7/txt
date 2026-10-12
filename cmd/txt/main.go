@@ -21,6 +21,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"syscall"
 	"time"
@@ -430,6 +431,61 @@ func main() {
 		}
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]int64{"count": n})
+	})
+
+	// Line numbers for the viewer. Each file is indexed once (one scan, every
+	// core) and the index kept while txt runs; a file whose size or time
+	// changes is indexed again. Requests for a file being indexed wait for it.
+	// ponytail: never evicted (512 KB per 4 GB file); add an LRU if that matters.
+	type lineEntry struct {
+		size int64
+		mod  time.Time
+		once sync.Once
+		ix   *search.LineIndex
+		err  error
+	}
+	var linesMu sync.Mutex
+	lineIndex := map[string]*lineEntry{}
+
+	// The line containing ?at= (byte offset), and the file's line count:
+	// {"line": n, "total": n}
+	mux.HandleFunc("GET /api/lines", func(w http.ResponseWriter, r *http.Request) {
+		at, err := strconv.ParseInt(r.URL.Query().Get("at"), 10, 64)
+		if err != nil || at < 0 {
+			http.Error(w, "at must be a byte offset", http.StatusBadRequest)
+			return
+		}
+		f, info, ok := openRaw(w, r)
+		if !ok {
+			return
+		}
+		defer f.Close()
+		path := r.URL.Query().Get("path")
+		linesMu.Lock()
+		e := lineIndex[path]
+		if e == nil || e.size != info.Size() || !e.mod.Equal(info.ModTime()) {
+			e = &lineEntry{size: info.Size(), mod: info.ModTime()}
+			lineIndex[path] = e
+		}
+		linesMu.Unlock()
+		// Not the request's context: other tabs may be waiting for this scan
+		e.once.Do(func() { e.ix, e.err = search.IndexLines(context.Background(), f, info.Size()) })
+		if e.err != nil {
+			linesMu.Lock()
+			if lineIndex[path] == e {
+				delete(lineIndex, path) // try again next time
+			}
+			linesMu.Unlock()
+			http.Error(w, e.err.Error(), http.StatusInternalServerError)
+			return
+		}
+		line, err := e.ix.LineAt(f, at)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]int64{"line": line, "total": e.ix.Total})
 	})
 
 	mux.HandleFunc("POST /api/file", func(w http.ResponseWriter, r *http.Request) {

@@ -117,3 +117,35 @@ func TestTiming(t *testing.T) {
 			q.Needle, q.Fold, n, countTime.Round(time.Millisecond), at, time.Since(start).Round(time.Microsecond))
 	}
 }
+
+// LineAt and Total must agree with counting newlines directly, with blocks
+// and chunks small enough that every boundary case comes up.
+func TestLineIndex(t *testing.T) {
+	defer func(c, b int64) { chunkSize, blockSize = c, b }(chunkSize, blockSize)
+	rng := rand.New(rand.NewSource(2))
+	for iter := 0; iter < 2000; iter++ {
+		blockSize = int64(1 + rng.Intn(4))
+		chunkSize = blockSize * int64(1+rng.Intn(3))
+		data := make([]byte, rng.Intn(40))
+		for i := range data {
+			data[i] = "ab\n"[rng.Intn(3)]
+		}
+		ix, err := IndexLines(context.Background(), bytes.NewReader(data), int64(len(data)))
+		if err != nil {
+			t.Fatal(err)
+		}
+		want := int64(bytes.Count(data, []byte{'\n'}))
+		if len(data) > 0 && data[len(data)-1] != '\n' {
+			want++
+		}
+		if ix.Total != want {
+			t.Fatalf("Total of %q = %d, want %d", data, ix.Total, want)
+		}
+		for off := 0; off <= len(data); off++ {
+			got, err := ix.LineAt(bytes.NewReader(data), int64(off))
+			if want := int64(bytes.Count(data[:off], []byte{'\n'})) + 1; err != nil || got != want {
+				t.Fatalf("LineAt(%q, %d) = %d, %v; want %d", data, off, got, err, want)
+			}
+		}
+	}
+}
