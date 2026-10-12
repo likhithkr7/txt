@@ -1,8 +1,7 @@
 # txt
 
 A local, browser-based editor for text, Markdown and CSV files. Files of any
-size open instantly; those over 4 MB are view-only. One binary, works offline,
-listens only on `127.0.0.1`.
+size open instantly; those over 4 MB are view-only. One binary, works offline.
 
 ## Features
 
