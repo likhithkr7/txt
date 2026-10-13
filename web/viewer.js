@@ -27,8 +27,8 @@ export function createViewer(path, size, { onChange = () => {}, onError = () => 
     const headerEl = document.createElement('div');
     headerEl.className = 'viewer-header';
     headerEl.hidden = true;
-    headerEl.innerHTML = '<span class="vh-num">1</span><span class="vh-text"></span>';
-    const headerNum = headerEl.firstChild, headerText = headerEl.lastChild;
+    headerEl.innerHTML = '<span class="vh-num">1</span><span class="vh-text"><span></span></span>';
+    const headerNum = headerEl.firstChild, headerText = headerEl.lastChild.firstChild;
     headerNum.hidden = true;
     // CSV/TSV: the first line stays on screen while scrolling
     const hasHeader = /\.(csv|tsv)$/i.test(path);
@@ -113,7 +113,11 @@ export function createViewer(path, size, { onChange = () => {}, onError = () => 
 
         const target = anchor();
         win = { start, bytes, lines, first: start === 0 ? 1 : null };
-        if (start === 0 && header === null) headerText.textContent = header = lineText(0);
+        if (start === 0 && header === null) {
+            headerText.textContent = header = lineText(0);
+            // A header wider than the rows must still scroll into view
+            if (hasHeader) linesEl.style.setProperty('--header-ch', header.length);
+        }
         top = lineAt(target) - lead;
         render();
         if (lines.length && (win.first === null || totalLines === null)) numberLines(win);
@@ -421,8 +425,9 @@ export function createViewer(path, size, { onChange = () => {}, onError = () => 
     track.addEventListener('lostpointercapture', () => thumb.classList.remove('dragging'));
 
     // The header scrolls sideways with the lines
-    // (an indent, not scrollLeft, which stops at the header's own width)
-    linesEl.addEventListener('scroll', () => { headerText.style.textIndent = `${-linesEl.scrollLeft}px`; });
+    // (a transform: scrollLeft stops at the header's own width, and Chrome 154
+    // doesn't redraw a long line when only its text-indent changes)
+    linesEl.addEventListener('scroll', () => { headerText.style.transform = `translateX(${-linesEl.scrollLeft}px)`; });
 
     // Redraw when the size changes, including when the tab is shown
     new ResizeObserver(() => render()).observe(linesEl);
